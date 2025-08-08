@@ -27,7 +27,7 @@ export default function Login() {
     }, []);
 
     const handleGoogleLogin = () => {
-        alert('구글 로그인을 진행합니다!');
+        window.location.href = 'http://localhost:8080/oauth2/authorization/google';
     };
 
     const goToMain = () => {

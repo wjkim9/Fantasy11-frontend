@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import Draft from './pages/Draft';
 import Waiting from './pages/Waiting';
 import Chatroom from './pages/Chatroom';
+import AuthCallback from './pages/AuthCallback';
 
 function App() {
     return (
@@ -14,6 +15,7 @@ function App() {
                 <Route path="/draft" element={<Draft />} />
                 <Route path="/waiting" element={<Waiting />} />
                 <Route path="/chatroom" element={<Chatroom />} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
             </Routes>
         </BrowserRouter>
     );
