@@ -1,26 +1,28 @@
-html, body {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-}
-
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
 
+html {
+    height: 100%;
+}
+
 body {
     font-family: 'Arial', sans-serif;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    min-height: 100vh;
+    background-attachment: fixed;
     color: #333;
-    justify-content: center; /* 가로 가운데 정렬 */
-    display: flex;
-    align-items: center;     /* 세로 가운데 정렬 */
+    height: 100vh;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 .header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
     padding: 1rem 2rem;
@@ -28,6 +30,8 @@ body {
     justify-content: space-between;
     align-items: center;
     box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    height: 80px;
 }
 
 .logo {
@@ -56,70 +60,189 @@ body {
 }
 
 .main-container {
+    position: fixed;
+    top: 80px;
+    left: 0;
+    right: 0;
+    bottom: 0;
     display: flex;
     gap: 2rem;
     padding: 2rem;
-    background: white; /* 테스트용 */
-    height: calc(100vh - 100px);
+    width: 100vw;
+    height: calc(100vh - 80px);
 }
 
 .section {
     flex: 1;
-    min-width: 0;
-}
-
-.section {
-    flex: 1;
-    min-width: 0;
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
     border-radius: 15px;
-    padding: 1.5rem;
+    padding: 2rem;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
+    /* 각 섹션이 개별적으로 스크롤되도록 설정 */
+    height: 100%;
     overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* EPL 순위 섹션만 특별히 스크롤 가능하게 */
+.section:first-child {
+    overflow-y: auto;
+    /* 스크롤 영역 설정 */
+    position: relative;
+}
+
+.section:first-child .epl-table thead {
+    /* 헤더를 섹션 상단에 완전 고정 */
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+/* 추천 선수 섹션은 스크롤바 표시하되 섹션 전체 단위로 */
+.section:last-child {
+    overflow-y: auto;
+    /* 스크롤바를 섹션 오른쪽 끝에 표시 */
+}
+
+.section:last-child .player-list {
+    /* 리스트 자체에는 스크롤 없음 */
+    overflow: visible;
 }
 
 .section-title {
-    font-size: 1.3rem;
+    font-size: 1.5rem;
     font-weight: bold;
-    margin-bottom: 1rem;
+    margin-bottom: 2rem;
     color: #764ba2;
     text-align: center;
-    border-bottom: 2px solid #667eea;
-    padding-bottom: 0.5rem;
+    border-bottom: 3px solid #667eea;
+    padding-bottom: 0.8rem;
 }
 
 .epl-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 0.9rem;
+    table-layout: fixed;
+    /* 테이블 헤더 고정을 위한 설정 */
+    position: relative;
+}
+
+/* 각 컬럼 너비 고정 설정 */
+.epl-table th:nth-child(1),
+.epl-table td:nth-child(1) {
+    width: 50px;
+    min-width: 50px;
+}
+
+.epl-table th:nth-child(2),
+.epl-table td:nth-child(2) {
+    width: 140px;
+    min-width: 140px;
+}
+
+.epl-table th:nth-child(3),
+.epl-table td:nth-child(3) {
+    width: 50px;
+    min-width: 50px;
+}
+
+.epl-table th:nth-child(4),
+.epl-table td:nth-child(4) {
+    width: 40px;
+    min-width: 40px;
+}
+
+.epl-table th:nth-child(5),
+.epl-table td:nth-child(5) {
+    width: 40px;
+    min-width: 40px;
+}
+
+.epl-table th:nth-child(6),
+.epl-table td:nth-child(6) {
+    width: 40px;
+    min-width: 40px;
+}
+
+.epl-table th:nth-child(7),
+.epl-table td:nth-child(7) {
+    width: 50px;
+    min-width: 50px;
+}
+
+.epl-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 100;
 }
 
 .epl-table th {
-    background: linear-gradient(45deg, #667eea, #764ba2);
+    background: linear-gradient(45deg, #667eea, #764ba2) !important;
     color: white;
     padding: 0.8rem 0.5rem;
     text-align: center;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 101;
+    /* 헤더 배경 확실히 고정 */
+    background-clip: padding-box;
+    border-bottom: 2px solid #764ba2;
+}
+
+/* 테이블 상단에 여백 추가해서 헤더가 첫 행을 가리지 않게 */
+.epl-table {
+    margin-top: 1rem;
 }
 
 .epl-table td {
-    padding: 0.6rem 0.5rem;
+    padding: 0.4rem 0.3rem;
     text-align: center;
     border-bottom: 1px solid #eee;
+    vertical-align: middle;
+    font-size: 0.85rem;
 }
 
 .epl-table tr:hover {
     background-color: rgba(102, 126, 234, 0.1);
 }
 
+.epl-table td.team-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    justify-content: flex-start;
+    white-space: nowrap;
+    text-align: left !important;
+    overflow: hidden;
+    padding-left: 0.8rem;
+}
+
 .team-logo {
-    width: 25px;
-    height: 25px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
-    background: linear-gradient(45deg, #667eea, #764ba2);
-    display: inline-block;
+    flex-shrink: 0;
+    /* 흰색 앰블럼 가시성을 위한 미묘한 배경과 테두리 */
+    background-color: #a8a9bc;
+    border: 1px solid rgba(118, 75, 162, 0.2);
+    padding: 1px;
+    /* 모든 앰블럼을 동일한 크기로 표시 */
+    object-fit: contain;
+    object-position: center;
+}
+
+.team-name {
+    font-size: 0.85rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
 }
 
 .draft-btn {
@@ -127,12 +250,12 @@ body {
     background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
     color: white;
     border: none;
-    padding: 1rem;
+    padding: 1.2rem;
     border-radius: 10px;
-    font-size: 1.1rem;
+    font-size: 1.2rem;
     font-weight: bold;
     cursor: pointer;
-    margin-bottom: 1.5rem;
+    margin-bottom: 2rem;
     transition: transform 0.3s ease, box-shadow 0.3s ease;
     box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
 }
@@ -144,15 +267,18 @@ body {
 
 .ranking-list, .player-list {
     list-style: none;
+    /* 리스트 자체에는 스크롤 없음 - 섹션 단위로만 스크롤 */
+    overflow: visible;
+    height: auto;
 }
 
 .ranking-item, .player-item {
     display: flex;
     align-items: center;
     padding: 0.8rem;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.6rem;
     background: rgba(102, 126, 234, 0.1);
-    border-radius: 8px;
+    border-radius: 10px;
     transition: transform 0.2s ease;
 }
 
@@ -164,24 +290,31 @@ body {
 .rank-number {
     background: linear-gradient(45deg, #667eea, #764ba2);
     color: white;
-    width: 30px;
-    height: 30px;
+    width: 35px;
+    height: 35px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: bold;
-    margin-right: 1rem;
+    margin-right: 1.2rem;
     flex-shrink: 0;
+    font-size: 1rem;
 }
 
 .player-photo {
-    width: 40px;
-    height: 40px;
+    width: 45px;
+    height: 45px;
     border-radius: 50%;
-    background: linear-gradient(45deg, #667eea, #764ba2);
-    margin-right: 0.8rem;
+    margin-right: 1rem;
     flex-shrink: 0;
+    overflow: hidden; /* 넘치는 부분 숨김 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* 배경 완전 제거 */
+    background: none !important;
+    background-color: transparent !important;
 }
 
 .player-info {
@@ -191,30 +324,32 @@ body {
 .player-name {
     font-weight: bold;
     color: #333;
+    font-size: 1rem;
+    margin-bottom: 0.2rem;
 }
 
 .player-team {
-    font-size: 0.8rem;
+    font-size: 0.9rem;
     color: #666;
 }
 
 .player-position {
     background: rgba(102, 126, 234, 0.2);
     color: #764ba2;
-    padding: 0.2rem 0.5rem;
-    border-radius: 12px;
-    font-size: 0.7rem;
+    padding: 0.3rem 0.8rem;
+    border-radius: 15px;
+    font-size: 0.8rem;
     font-weight: bold;
-    margin-left: 0.5rem;
+    margin-left: 0.8rem;
 }
 
 .user-info {
     flex-grow: 1;
-    margin-left: 0.5rem;
+    margin-left: 0.8rem;
 }
 
 .user-email {
-    font-size: 0.9rem;
+    font-size: 1rem;
     color: #333;
 }
 
@@ -222,16 +357,5 @@ body {
     font-weight: bold;
     color: #764ba2;
     margin-left: auto;
-    font-size: 1.1rem;
-}
-
-@media (max-width: 1200px) {
-    .main-container {
-        flex-direction: column;
-        height: auto;
-    }
-
-    .section {
-        min-height: 400px;
-    }
+    font-size: 1.3rem;
 }
