@@ -167,7 +167,7 @@ export default function Main() {
     const handleLoginClick = async () => {
         if (isLoggedIn) {
             try {
-                await axiosInstance.post("/logout");
+                await axiosInstance.post("/api/auth/logout");
             } catch (error) {
                 console.error("로그아웃 실패(로컬만 처리):", error);
             } finally {
