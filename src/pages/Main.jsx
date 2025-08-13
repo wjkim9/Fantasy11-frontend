@@ -1,3 +1,4 @@
+// src/pages/Main.jsx
 import React, { useEffect, useState, useRef } from 'react';
 import './Main.css';
 import { useNavigate } from 'react-router-dom';
@@ -8,24 +9,36 @@ export default function Main() {
     const [remainingTime, setRemainingTime] = useState('--:--');
     const [matchState, setMatchState] = useState('BEFORE_OPEN'); // BEFORE_OPEN / OPEN / LOCKED
     const [roundNo, setRoundNo] = useState(0);
-    const [userId, setUserId] = useState(null);
     const socketRef = useRef(null);
 
     useEffect(() => {
-        const socket = new WebSocket('ws://localhost:8080/ws/match');
+        const token = localStorage.getItem('accessToken');
+        if (!token) {
+            console.warn('accessToken 없음 → 로그인 필요');
+            // 필요 시 자동 이동: navigate('/login');
+            return;
+        }
+
+        const WS_BASE = (import.meta.env.VITE_API_WS?.replace(/\/$/, '')) || 'ws://localhost:8080';
+        const url = `${WS_BASE}/ws/match?token=${encodeURIComponent(token)}`;
+
+        const socket = new WebSocket(url);
         socketRef.current = socket;
 
         socket.onmessage = (event) => {
-            const msg = JSON.parse(event.data);
+            try {
+                const msg = JSON.parse(event.data);
 
-            if (msg.type === 'USER_ID') {
-                setUserId(msg.userId);
-            }
+                // USER_ID는 더 이상 사용하지 않음 (서버 식별용)
+                // if (msg.type === 'USER_ID') { /* ignore */ }
 
-            if (msg.type === 'STATUS') {
-                setRemainingTime(msg.remainingTime);
-                setMatchState(msg.state);
-                setRoundNo(msg.round?.no || 0);
+                if (msg.type === 'STATUS') {
+                    setRemainingTime(msg.remainingTime);
+                    setMatchState(msg.state);
+                    setRoundNo(msg.round?.no || 0);
+                }
+            } catch {
+                /* no-op */
             }
         };
 
@@ -33,22 +46,31 @@ export default function Main() {
             console.warn('WebSocket 연결 종료됨');
         };
 
-        return () => {
-            socket.close();
+        socket.onerror = () => {
+            console.warn('WebSocket 에러');
         };
-    }, []);
+
+        return () => {
+            try { socket.close(); } catch {}
+        };
+    }, [navigate]);
 
     const handleLoginClick = () => {
         navigate('/login');
     };
 
     const handleDraftClick = () => {
-        if (!userId) {
-            alert('WebSocket 연결이 아직 안됐습니다!');
+        const token = localStorage.getItem('accessToken');
+        if (!token) {
+            alert('로그인이 필요합니다.');
             return;
         }
-
-        navigate(`/waiting?userId=${userId}`);
+        if (matchState !== 'OPEN') {
+            alert('현재는 매치 등록 시간이 아닙니다.');
+            return;
+        }
+        // ✅ 쿼리스트링으로 userId 전달하지 않음
+        navigate('/waiting');
     };
 
     const draftDisabled = matchState !== 'OPEN';
@@ -78,7 +100,6 @@ export default function Main() {
         }
     };
 
-
     return (
         <>
             <header className="header">
@@ -106,7 +127,7 @@ export default function Main() {
                     </table>
                 </div>
 
-                {/* TOP 10 유저 순위 */}
+                {/* TOP 10 유저 순위 + 매치 */}
                 <div className="section">
                     <p>{getMatchStatusTextJSX()}</p>
                     <button
