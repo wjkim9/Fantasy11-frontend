@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useRef } from "react";
 import "./Main.css";
 import { useNavigate } from "react-router-dom";
-import axiosInstance from "../api/axiosInstance"; // 경로 확인
+import axiosInstance from "../api/axiosInstance";
 
-// WebSocket Base URL (Vite/CRA/윈도우 전역 모두 대응)
+// WebSocket Base URL
 const WS_BASE =
     (typeof import.meta !== "undefined" &&
         import.meta.env &&
@@ -16,151 +16,178 @@ export default function Main() {
     const navigate = useNavigate();
 
     // 공통 상태
-    const [remainingTime, setRemainingTime] = useState("--:--");
+    const [remainingTime, setRemainingTime] = useState("00:00:00"); // HH:MM:SS
     const [matchState, setMatchState] = useState("BEFORE_OPEN"); // BEFORE_OPEN / OPEN / LOCKED
     const [roundNo, setRoundNo] = useState(0);
 
-    // 확장 상태 (dev 브랜치 기능 유지)
-    const [teamTable, setTeamTable] = useState([]); // 팀 순위 데이터
+    // 부가 데이터
+    const [teamTable, setTeamTable] = useState([]);
     const [isLoadingTeams, setIsLoadingTeams] = useState(true);
-    const [topPlayers, setTopPlayers] = useState([]); // Top 10 선수 데이터
+    const [topPlayers, setTopPlayers] = useState([]);
     const [isLoadingPlayers, setIsLoadingPlayers] = useState(true);
-    const [topUsers, setTopUsers] = useState([]); // Top 10 유저 데이터
+    const [topUsers, setTopUsers] = useState([]);
     const [isLoadingUsers, setIsLoadingUsers] = useState(true);
-    const [isLoggedIn, setIsLoggedIn] = useState(false); // 로그인 상태
+    const [isLoggedIn, setIsLoggedIn] = useState(false);
 
     const socketRef = useRef(null);
 
-    // 로그인 상태 확인
+    // 카운트다운 계산용 타깃 절대시각(ms)
+    const targetMsRef = useRef(null);
+
     const checkLoginStatus = () => {
         const accessToken = localStorage.getItem("accessToken");
         setIsLoggedIn(!!accessToken);
     };
 
-    // 팀명 한글 매핑
-    const getKoreanTeamName = (englishName) => {
-        const teamNameMap = {
-            Arsenal: "아스날",
-            "Aston Villa": "빌라",
-            Brighton: "브라이튼",
-            Burnley: "번리",
-            Chelsea: "첼시",
-            "Crystal Palace": "팰리스",
-            Everton: "에버턴",
-            Fulham: "풀럼",
-            Liverpool: "리버풀",
-            Luton: "루턴",
-            "Man City": "맨시티",
-            "Man Utd": "맨유",
-            Newcastle: "뉴캐슬",
-            "Nott'm Forest": "노팅엄",
-            "Sheffield Utd": "셰필드",
-            Spurs: "토트넘",
-            "West Ham": "웨스트햄",
-            Wolves: "울버햄튼",
-            Brentford: "브렌트포드",
-            Bournemouth: "본머스",
-            Leeds: "리즈",
-            Sunderland: "선더랜드",
-        };
-        return teamNameMap[englishName] || englishName;
+    // 시간 유틸: 서버가 보내는 "YYYY-MM-DDTHH:mm:ss"(KST) → 로컬 Date
+    const toMs = (isoLocal) => {
+        if (!isoLocal) return null;
+        // TZ 없는 ISO는 브라우저 로컬로 파싱됨. (운영 환경이 KST라면 그대로 일치)
+        const d = new Date(isoLocal);
+        return isNaN(d.getTime()) ? null : d.getTime();
     };
 
-    // Top 10 유저
+    const fmtHMS = (sec) => {
+        if (sec <= 0) return "00:00:00";
+        const hh = Math.floor(sec / 3600);
+        const mm = Math.floor((sec % 3600) / 60);
+        const ss = sec % 60;
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+    };
+
+    // 서버 STATUS를 화면 상태로 반영 + 타깃 절대시각 세팅
+    const applyStatus = (status) => {
+        if (!status) return;
+        const stateRaw = status.state || "BEFORE_OPEN";
+        const state = stateRaw === "LOCKED_HOLD" ? "LOCKED" : stateRaw; // 뷰는 LOCKED로 통일
+        setMatchState(state);
+        const round = status.round || null;
+        setRoundNo(round?.no || 0);
+
+        if (state === "BEFORE_OPEN") {
+            targetMsRef.current = toMs(round?.openAt);
+        } else if (state === "OPEN") {
+            targetMsRef.current = toMs(round?.lockAt);
+        } else {
+            targetMsRef.current = null; // LOCKED
+            setRemainingTime("00:00:00");
+        }
+
+        // 즉시 1회 계산(틱 기다리지 않도록)
+        if (targetMsRef.current) {
+            const diffSec = Math.max(0, Math.floor((targetMsRef.current - Date.now()) / 1000));
+            setRemainingTime(fmtHMS(diffSec));
+        }
+    };
+
+    // REST: 상태 1회 조회 (비로그인 허용)
+    const fetchStatus = async () => {
+        try {
+            const res = await axiosInstance.get("/api/match/status"); // permitAll 필요
+            applyStatus(res.data);
+        } catch (e) {
+            console.warn("status fetch 실패:", e);
+        }
+    };
+
+    // Top 10 / 순위 데이터
     const fetchTopUsers = async () => {
         try {
             setIsLoadingUsers(true);
             const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/user/seasonBestScore`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
+            const data = res.ok ? await res.json() : [];
             setTopUsers(data);
-        } catch (e) {
-            console.error("Top 10 유저 로드 실패:", e);
+        } catch {
             setTopUsers([]);
         } finally {
             setIsLoadingUsers(false);
         }
     };
-
-    // Top 10 선수
     const fetchTopPlayers = async () => {
         try {
             setIsLoadingPlayers(true);
             const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/player/previousPlayer`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
+            const data = res.ok ? await res.json() : [];
             setTopPlayers(data);
-        } catch (e) {
-            console.error("Top 10 선수 로드 실패:", e);
+        } catch {
             setTopPlayers([]);
         } finally {
             setIsLoadingPlayers(false);
         }
     };
-
-    // 팀 순위
     const fetchTeamTable = async () => {
         try {
             setIsLoadingTeams(true);
             const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/team/getTable`);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = await res.json();
+            const data = res.ok ? await res.json() : [];
             setTeamTable(data);
-        } catch (e) {
-            console.error("팀 순위 로드 실패:", e);
+        } catch {
             setTeamTable([]);
         } finally {
             setIsLoadingTeams(false);
         }
     };
 
-    // 마운트: 로그인 체크 + 데이터 로딩 + WS 연결(토큰 있을 때만)
+    // 마운트: 로그인 체크 + 데이터 로딩 + 초기 STATUS + (로그인 시) WS 연결
     useEffect(() => {
         checkLoginStatus();
         fetchTeamTable();
         fetchTopPlayers();
         fetchTopUsers();
+        fetchStatus(); // 비로그인 사용자도 남은 시간 노출
 
         const token = localStorage.getItem("accessToken");
-        if (!token) {
-            console.warn("accessToken 없음 → WS 미연결(메인 화면은 그대로 동작)");
-            return;
-        }
+        if (token) {
+            const url = `${WS_BASE}/ws/match?token=${encodeURIComponent(token)}`;
+            const socket = new WebSocket(url);
+            socketRef.current = socket;
 
-        const url = `${WS_BASE}/ws/match?token=${encodeURIComponent(token)}`;
-        const socket = new WebSocket(url);
-        socketRef.current = socket;
-
-        socket.onmessage = (event) => {
-            try {
-                const msg = JSON.parse(event.data);
-
-                // USER_ID는 서버 식별용이라 메인 화면엔 불필요 → 무시
-                // if (msg.type === "USER_ID") { /* ignore */ }
-
-                if (msg.type === "STATUS") {
-                    setRemainingTime(msg.remainingTime);
-                    setMatchState(msg.state);
-                    setRoundNo(msg.round?.no || 0);
+            socket.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === "STATUS") {
+                        // 서버 remainingTime은 무시하고, 절대시각만 반영
+                        applyStatus({
+                            state: msg.state,
+                            round: msg.round,
+                        });
+                    }
+                    // USER_ID 등은 메인 화면에선 사용 안 함
+                } catch {
+                    /* ignore */
                 }
-            } catch {
-                /* no-op */
+            };
+            socket.onclose = () => console.warn("WebSocket 종료");
+            socket.onerror = () => console.warn("WebSocket 에러");
+
+            return () => {
+                try {
+                    socket.close();
+                } catch {}
+            };
+        }
+    }, []);
+
+    // 카운트다운 1초 틱(클라 계산)
+    useEffect(() => {
+        const id = setInterval(() => {
+            const t = targetMsRef.current;
+            if (!t) {
+                // LOCKED 등
+                setRemainingTime("00:00:00");
+                return;
             }
-        };
+            const diffSec = Math.max(0, Math.floor((t - Date.now()) / 1000));
+            setRemainingTime(fmtHMS(diffSec));
+        }, 1000);
+        return () => clearInterval(id);
+    }, []);
 
-        socket.onclose = () => {
-            console.warn("WebSocket 연결 종료됨");
-        };
-
-        socket.onerror = () => {
-            console.warn("WebSocket 에러");
-        };
-
-        return () => {
-            try {
-                socket.close();
-            } catch {}
-        };
+    // 드리프트 보정: 60초마다 /status 재동기화 (로그인 여부 무관)
+    useEffect(() => {
+        const id = setInterval(fetchStatus, 60000);
+        return () => clearInterval(id);
     }, []);
 
     // 로그인 / 로그아웃 버튼
@@ -191,7 +218,6 @@ export default function Main() {
             alert("현재는 매치 등록 시간이 아닙니다.");
             return;
         }
-        // ✅ userId 쿼리스트링 전달하지 않음
         navigate("/waiting");
     };
 
@@ -222,7 +248,35 @@ export default function Main() {
         }
     };
 
-    // Top 10 유저 렌더링
+    // ===== 나머지 Top10/순위 렌더링은 기존 그대로 =====
+    const getKoreanTeamName = (englishName) => {
+        const teamNameMap = {
+            Arsenal: "아스날",
+            "Aston Villa": "빌라",
+            Brighton: "브라이튼",
+            Burnley: "번리",
+            Chelsea: "첼시",
+            "Crystal Palace": "팰리스",
+            Everton: "에버턴",
+            Fulham: "풀럼",
+            Liverpool: "리버풀",
+            Luton: "루턴",
+            "Man City": "맨시티",
+            "Man Utd": "맨유",
+            Newcastle: "뉴캐슬",
+            "Nott'm Forest": "노팅엄",
+            "Sheffield Utd": "셰필드",
+            Spurs: "토트넘",
+            "West Ham": "웨스트햄",
+            Wolves: "울버햄튼",
+            Brentford: "브렌트포드",
+            Bournemouth: "본머스",
+            Leeds: "리즈",
+            Sunderland: "선더랜드",
+        };
+        return teamNameMap[englishName] || englishName;
+    };
+
     const renderTopUsers = () => {
         if (isLoadingUsers) {
             return (
@@ -233,7 +287,6 @@ export default function Main() {
                 </li>
             );
         }
-
         if (topUsers.length === 0) {
             return (
                 <li className="ranking-item">
@@ -243,7 +296,6 @@ export default function Main() {
                 </li>
             );
         }
-
         return topUsers.map((user, index) => (
             <li key={user.userId} className="ranking-item">
                 <div className="rank-number">{index + 1}</div>
@@ -260,7 +312,6 @@ export default function Main() {
         ));
     };
 
-    // Top 10 선수 렌더링
     const renderTopPlayers = () => {
         if (isLoadingPlayers) {
             return (
@@ -271,7 +322,6 @@ export default function Main() {
                 </li>
             );
         }
-
         if (topPlayers.length === 0) {
             return (
                 <li className="player-item">
@@ -281,7 +331,6 @@ export default function Main() {
                 </li>
             );
         }
-
         return topPlayers.map((player, index) => (
             <li key={player.playerFplId} className="player-item">
                 <div className="rank-number">{index + 1}</div>
@@ -305,15 +354,10 @@ export default function Main() {
                 </div>
                 <div className="player-info">
                     <div className="player-name">
-                        {player.krName && player.krName.trim() !== ""
-                            ? player.krName
-                            : player.playerName}
+                        {player.krName && player.krName.trim() !== "" ? player.krName : player.playerName}
                     </div>
                     <div className="player-team">{getKoreanTeamName(player.teamName)}</div>
-                    <div
-                        className="player-points"
-                        style={{ fontSize: "0.8rem", color: "#764ba2", fontWeight: "bold" }}
-                    >
+                    <div className="player-points" style={{ fontSize: "0.8rem", color: "#764ba2", fontWeight: "bold" }}>
                         {player.totalPoints}점
                     </div>
                 </div>
@@ -322,7 +366,6 @@ export default function Main() {
         ));
     };
 
-    // 팀 테이블 렌더링
     const renderTeamTable = () => {
         if (isLoadingTeams) {
             return (
@@ -333,7 +376,6 @@ export default function Main() {
                 </tr>
             );
         }
-
         if (teamTable.length === 0) {
             return (
                 <tr>
@@ -343,7 +385,6 @@ export default function Main() {
                 </tr>
             );
         }
-
         return teamTable.map((team) => (
             <tr key={team.fplId}>
                 <td>{team.position}</td>
@@ -383,13 +424,13 @@ export default function Main() {
 
                     <table className="epl-table">
                         <colgroup>
-                            <col style={{ width: "50px" }} /> {/* 순위 */}
-                            <col style={{ width: "140px" }} /> {/* 팀 + 엠블럼 */}
-                            <col style={{ width: "50px" }} /> {/* 경기 */}
-                            <col style={{ width: "40px" }} /> {/* 승 */}
-                            <col style={{ width: "40px" }} /> {/* 무 */}
-                            <col style={{ width: "40px" }} /> {/* 패 */}
-                            <col style={{ width: "50px" }} /> {/* 승점 */}
+                            <col style={{ width: "50px" }} />
+                            <col style={{ width: "140px" }} />
+                            <col style={{ width: "50px" }} />
+                            <col style={{ width: "40px" }} />
+                            <col style={{ width: "40px" }} />
+                            <col style={{ width: "40px" }} />
+                            <col style={{ width: "50px" }} />
                         </colgroup>
                         <thead>
                         <tr>
@@ -412,10 +453,10 @@ export default function Main() {
                     <button
                         className="draft-btn"
                         onClick={handleDraftClick}
-                        disabled={draftDisabled}
+                        disabled={matchState !== "OPEN"}
                         style={{
-                            opacity: draftDisabled ? 0.5 : 1,
-                            cursor: draftDisabled ? "not-allowed" : "pointer",
+                            opacity: matchState !== "OPEN" ? 0.5 : 1,
+                            cursor: matchState !== "OPEN" ? "not-allowed" : "pointer",
                         }}
                     >
                         🏆 드래프트 참가

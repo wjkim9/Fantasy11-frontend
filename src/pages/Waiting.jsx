@@ -10,8 +10,8 @@ export default function Waiting() {
     const [roundNo, setRoundNo] = useState(0);
     const [userId, setUserId] = useState(null);
     const [participantCount, setParticipantCount] = useState(0);
-    const [remainingTime, setRemainingTime] = useState('--:--');
-    const [status, setStatus] = useState('BEFORE_OPEN');
+    const [remainingTime, setRemainingTime] = useState('00:00:00'); // HH:MM:SS
+    const [status, setStatus] = useState('BEFORE_OPEN'); // BEFORE_OPEN / OPEN / LOCKED
 
     // 상태 ref (재연결/클로저 이슈 방지)
     const hasJoinedRef = useRef(false);     // OPEN에서 JOIN을 보냈는가
@@ -20,15 +20,25 @@ export default function Waiting() {
     const pollingRef = useRef(null);
     const lockTimeoutRef = useRef(null);
 
-    // 데모용 참가자 이름
-    const participants = [
-        'test1234@gmail.com','soccer_king@gmail.com','fantasy_master@gmail.com',
-        'epl_lover@gmail.com','draft_pro@gmail.com','football_fan@gmail.com',
-        'goal_hunter@gmail.com','premier_league@gmail.com','champion@gmail.com',
-        'messi_fan@gmail.com','ronaldo_lover@gmail.com','kane_supporter@gmail.com'
-    ];
+    // 카운트다운 계산용 타깃 절대시각(ms)
+    const targetMsRef = useRef(null);
 
-    // 배정 폴백 조회
+    // 유틸: TZ 없는 ISO → Date
+    const toMs = (isoLocal) => {
+        if (!isoLocal) return null;
+        const d = new Date(isoLocal);
+        return isNaN(d.getTime()) ? null : d.getTime();
+    };
+    const fmtHMS = (sec) => {
+        if (sec <= 0) return '00:00:00';
+        const hh = Math.floor(sec / 3600);
+        const mm = Math.floor((sec % 3600) / 60);
+        const ss = sec % 60;
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+    };
+
+    // 배정 폴백 조회 (서버 REST가 남아있다면 사용)
     const checkAssignment = async () => {
         try {
             const token = localStorage.getItem('accessToken');
@@ -66,16 +76,46 @@ export default function Waiting() {
             }, 30000);
         }
     };
-
     const stopLockedWaiting = () => {
         lockedHoldRef.current = false;
-        if (pollingRef.current) {
-            clearInterval(pollingRef.current);
-            pollingRef.current = null;
+        if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+        if (lockTimeoutRef.current) { clearTimeout(lockTimeoutRef.current); lockTimeoutRef.current = null; }
+    };
+
+    // 초기 상태 1회 조회(드리프트 보정에도 사용)
+    const fetchStatus = async () => {
+        try {
+            const res = await fetch('/api/match/status');
+            if (!res.ok) return;
+            const data = await res.json(); // {state, round:{openAt,lockAt,no}, count,...}
+            applyStatusFromServer(data);
+        } catch {/* ignore */}
+    };
+
+    // 서버 STATUS를 화면 상태로 반영 + 타깃 절대시각 세팅(remainingTime은 클라 계산)
+    const applyStatusFromServer = (statusObj) => {
+        if (!statusObj) return;
+        const stateRaw = statusObj.state || 'BEFORE_OPEN';
+        const nextState = stateRaw === 'LOCKED_HOLD' ? 'LOCKED' : stateRaw;
+        setStatus(nextState);
+
+        const round = statusObj.round || null;
+        setRoundNo(round?.no || 0);
+        setParticipantCount(Number(statusObj.count ?? 0));
+
+        if (nextState === 'BEFORE_OPEN') {
+            targetMsRef.current = toMs(round?.openAt);
+        } else if (nextState === 'OPEN') {
+            targetMsRef.current = toMs(round?.lockAt);
+        } else {
+            targetMsRef.current = null;
+            setRemainingTime('00:00:00');
         }
-        if (lockTimeoutRef.current) {
-            clearTimeout(lockTimeoutRef.current);
-            lockTimeoutRef.current = null;
+
+        // 즉시 1회 계산
+        if (targetMsRef.current) {
+            const diffSec = Math.max(0, Math.floor((targetMsRef.current - Date.now()) / 1000));
+            setRemainingTime(fmtHMS(diffSec));
         }
     };
 
@@ -87,7 +127,7 @@ export default function Waiting() {
             return;
         }
 
-        // Main.jsx와 동일한 방식으로 WS 베이스 결정
+        // 메인과 동일한 WS 베이스 결정
         const WS_BASE =
             (typeof import.meta !== 'undefined' &&
                 import.meta.env &&
@@ -95,6 +135,9 @@ export default function Waiting() {
                 import.meta.env.VITE_API_WS_URL.replace(///$/, '')) ||
             (window.REACT_APP_WS_BASE_URL && window.REACT_APP_WS_BASE_URL.replace(///$/, '')) ||
             'ws://localhost:8080';
+
+        // 초기 REST 상태 1회 (WS 첫 메시지 전에도 타이머 표시되게)
+        fetchStatus();
 
         const url = `${WS_BASE}/ws/match?token=${encodeURIComponent(token)}`;
         const socket = new WebSocket(url);
@@ -104,17 +147,17 @@ export default function Waiting() {
             try {
                 const msg = JSON.parse(event.data);
 
-                if (msg.type === 'USER_ID') {
-                    setUserId(msg.userId);
-                }
+                if (msg.type === 'USER_ID') setUserId(msg.userId);
 
                 if (msg.type === 'STATUS') {
-                    setParticipantCount(msg.count);
-                    setRemainingTime(msg.remainingTime);
-                    setStatus(msg.state);
-                    setRoundNo(msg.round?.no || 0);
+                    // 서버 remainingTime은 무시하고 절대시각만 반영
+                    applyStatusFromServer({
+                        state: msg.state,
+                        round: msg.round,
+                        count: msg.count
+                    });
 
-                    // OPEN이면 JOIN 1회만 보냄 (재연결 시에도 hasJoinedRef로 가드)
+                    // OPEN이면 JOIN 1회만 보냄
                     if (msg.state === 'OPEN') {
                         if (!hasJoinedRef.current && socket.readyState === WebSocket.OPEN) {
                             socket.send(JSON.stringify({ type: 'JOIN' }));
@@ -122,7 +165,7 @@ export default function Waiting() {
                         }
                     }
 
-                    // LOCKED 또는 LOCKED_HOLD → 이미 JOIN한 유저는 '배정 대기' 모드로
+                    // LOCKED/LOCKED_HOLD → JOIN했던 유저는 배정 대기, 아니면 홈으로
                     if (msg.state === 'LOCKED' || msg.state === 'LOCKED_HOLD') {
                         if (hasJoinedRef.current) {
                             startLockedWaiting();
@@ -153,8 +196,27 @@ export default function Waiting() {
             try { socket.close(); } catch {}
             stopLockedWaiting();
         };
-        // ✅ 의도적으로 빈 배열: 소켓은 한 번만 생성. 상태는 ref로 관리.
     }, [navigate]);
+
+    // 카운트다운 1초 틱(클라 계산)
+    useEffect(() => {
+        const id = setInterval(() => {
+            const t = targetMsRef.current;
+            if (!t) {
+                setRemainingTime('00:00:00'); // LOCKED 등
+                return;
+            }
+            const diffSec = Math.max(0, Math.floor((t - Date.now()) / 1000));
+            setRemainingTime(fmtHMS(diffSec));
+        }, 1000);
+        return () => clearInterval(id);
+    }, []);
+
+    // 드리프트 보정: 60초마다 /status 재동기화
+    useEffect(() => {
+        const id = setInterval(fetchStatus, 60000);
+        return () => clearInterval(id);
+    }, []);
 
     const handleCancel = () => {
         if (!window.confirm('정말로 드래프트 대기를 취소하시겠습니까?')) return;
@@ -201,12 +263,18 @@ export default function Waiting() {
                     <div className="participants-list">
                         <div className="participants-title">참가자 목록</div>
                         <div id="participantsList">
-                            {participants.slice(0, participantCount).map((name, i) => (
+                            {Array.from({ length: participantCount }).map((_, i) => (
                                 <div className="participant-item" key={i}>
-                                    <span className="participant-name">{name}</span>
+                                    <span className="participant-name">참가자 #{i + 1}</span>
                                     <span className="participant-status">준비완료</span>
                                 </div>
                             ))}
+                            {participantCount === 0 && (
+                                <div className="participant-item">
+                                    <span className="participant-name">아직 참가자가 없습니다</span>
+                                    <span className="participant-status">대기중</span>
+                                </div>
+                            )}
                         </div>
                     </div>
 
