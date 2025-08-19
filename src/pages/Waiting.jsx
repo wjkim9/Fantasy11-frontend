@@ -91,9 +91,9 @@ export default function Waiting() {
         const WS_BASE =
             (typeof import.meta !== 'undefined' &&
                 import.meta.env &&
-                import.meta.env.VITE_API_WS &&
-                import.meta.env.VITE_API_WS.replace(/\/$/, '')) ||
-            (window.REACT_APP_WS_BASE_URL && window.REACT_APP_WS_BASE_URL.replace(/\/$/, '')) ||
+                import.meta.env.VITE_API_WS_URL &&
+                import.meta.env.VITE_API_WS_URL.replace(///$/, '')) ||
+            (window.REACT_APP_WS_BASE_URL && window.REACT_APP_WS_BASE_URL.replace(///$/, '')) ||
             'ws://localhost:8080';
 
         const url = `${WS_BASE}/ws/match?token=${encodeURIComponent(token)}`;
