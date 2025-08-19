@@ -28,7 +28,7 @@ export default function Draft() {
     useEffect(() => {
         const fetchElementTypes = async () => {
             try {
-                const response = await fetch('http://localhost:8080/api/elementType/all');
+                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/elementType/all`);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -49,7 +49,7 @@ export default function Draft() {
         const fetchPlayers = async () => {
             try {
                 setLoading(true);
-                const response = await fetch('http://localhost:8080/api/playerCache');
+                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/playerCache`);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -104,7 +104,7 @@ export default function Draft() {
                 params.append('elementTypeId', searchParams.elementTypeId);
             }
             
-            const response = await fetch(`http://localhost:8080/api/playerEs/search?${params.toString()}`);
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/playerEs/search?${params.toString()}`);
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);

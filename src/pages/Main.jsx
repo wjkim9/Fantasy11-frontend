@@ -7,9 +7,9 @@ import axiosInstance from "../api/axiosInstance";
 const WS_BASE =
     (typeof import.meta !== "undefined" &&
         import.meta.env &&
-        import.meta.env.VITE_API_WS &&
-        import.meta.env.VITE_API_WS.replace(/\/$/, "")) ||
-    (window.REACT_APP_WS_BASE_URL && window.REACT_APP_WS_BASE_URL.replace(/\/$/, "")) ||
+        import.meta.env.VITE_API_WS_URL &&
+        import.meta.env.VITE_API_WS_URL.replace(///$/, "")) ||
+    (window.REACT_APP_WS_BASE_URL && window.REACT_APP_WS_BASE_URL.replace(///$/, "")) ||
     "ws://localhost:8080";
 
 export default function Main() {
@@ -95,7 +95,7 @@ export default function Main() {
     const fetchTopUsers = async () => {
         try {
             setIsLoadingUsers(true);
-            const res = await fetch("http://localhost:8080/api/user/seasonBestScore");
+            const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/user/seasonBestScore`);
             const data = res.ok ? await res.json() : [];
             setTopUsers(data);
         } catch {
@@ -107,7 +107,7 @@ export default function Main() {
     const fetchTopPlayers = async () => {
         try {
             setIsLoadingPlayers(true);
-            const res = await fetch("http://localhost:8080/api/player/previousPlayer");
+            const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/player/previousPlayer`);
             const data = res.ok ? await res.json() : [];
             setTopPlayers(data);
         } catch {
@@ -119,7 +119,7 @@ export default function Main() {
     const fetchTeamTable = async () => {
         try {
             setIsLoadingTeams(true);
-            const res = await fetch("http://localhost:8080/api/team/getTable");
+            const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/team/getTable`);
             const data = res.ok ? await res.json() : [];
             setTeamTable(data);
         } catch {
