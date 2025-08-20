@@ -134,7 +134,7 @@ export default function Waiting() {
                 import.meta.env.VITE_API_WS_URL &&
                 import.meta.env.VITE_API_WS_URL.replace(///$/, '')) ||
             (window.REACT_APP_WS_BASE_URL && window.REACT_APP_WS_BASE_URL.replace(///$/, '')) ||
-            `${import.meta.env.VITE_API_WS_URL}:8080`))));
+           'ws://localhost:8080'))));
 
         // 초기 REST 상태 1회 (WS 첫 메시지 전에도 타이머 표시되게)
         fetchStatus();
