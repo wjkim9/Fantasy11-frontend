@@ -12,7 +12,8 @@ function App() {
             <Routes>
                 <Route path="/" element={<Main />} />
                 <Route path="/login" element={<Login />} />
-                <Route path="/draft" element={<Draft />} />
+                {/* <Route path="/draft" element={<Draft />} /> */}
+                <Route path="/draft/:draftId" element={<Draft />} />
                 <Route path="/waiting" element={<Waiting />} />
                 <Route path="/chatroom" element={<Chatroom />} />
                 <Route path="/chatroom/:roomId" element={<Chatroom />} />
