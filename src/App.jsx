@@ -16,6 +16,7 @@ function App() {
                 <Route path="/draft/:draftId" element={<Draft />} />
                 <Route path="/waiting" element={<Waiting />} />
                 <Route path="/chatroom" element={<Chatroom />} />
+                <Route path="/chatroom/:roomId" element={<Chatroom />} />
                 <Route path="/auth/callback" element={<AuthCallback />} />
             </Routes>
         </BrowserRouter>
