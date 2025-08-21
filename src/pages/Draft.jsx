@@ -42,6 +42,7 @@ export default function Draft() {
     const [isSelectingPlayer, setIsSelectingPlayer] = useState(false); // 선수 선택 중인지 여부
     const [botAutoSelectTimer, setBotAutoSelectTimer] = useState(null); // Bot 자동 선택 타이머
     const [selectedPlayerIds, setSelectedPlayerIds] = useState([]); // 이미 선택된 선수 ID 목록
+    const [isTimerPaused, setIsTimerPaused] = useState(false); // 타이머 일시정지 상태
     
     // 드래프트된 선수 관련 상태들
     const [draftedPlayers, setDraftedPlayers] = useState([]); // 드래프트된 선수 전체 리스트
@@ -149,7 +150,7 @@ export default function Draft() {
 
                 const accessToken = localStorage.getItem("accessToken");
 
-                const response = await fetch(`http://localhost:8080/api/draft/${draftId}/allPlayers`, {
+                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/draft/${draftId}/allPlayers`, {
                     method: "GET",
                     headers: {
                         "Content-Type": "application/json",
@@ -204,7 +205,7 @@ export default function Draft() {
 
                 const accessToken = localStorage.getItem("accessToken");
 
-                const response = await fetch(`http://localhost:8080/api/draft/${draftId}/participants`, {
+                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/draft/${draftId}/participants`, {
                     method: "GET",
                     headers: {
                         "Content-Type": "application/json",
@@ -336,15 +337,15 @@ export default function Draft() {
         handlePlayerSelect(availablePlayer, true, true); // isAutoSelect, isBot
     };
 
-    // 사용자 시간 만료 시 자동 선택 함수
+    // 사용자 시간 만료 시 자동 선택 함수 (수정됨)
     const performUserAutoSelect = () => {
         const currentParticipant = participants[currentTurnIndex];
         if (!currentParticipant || isBot(currentParticipant)) return;
         
-        // 현재 참가자가 실제 사용자(data-is-user가 true)가 아닌 경우 대기 (자동 선택하지 않음)
-        if (!currentParticipant.userFlag) {
-            console.log(`Not a real user, waiting for WebSocket response...`);
-            return; // 대기 상태 유지, 다음 턴으로 이동하지 않음
+        // 현재 참가자가 실제 사용자(data-is-user가 true)가 아닌 경우 아무것도 하지 않음
+        if (currentParticipant.userFlag !== true) {
+            console.log(`Not a real user (userFlag: ${currentParticipant.userFlag}), waiting for WebSocket response...`);
+            return; // 대기 상태 유지, 다음 턴으로 이동하지 않음, 자동 선택하지 않음
         }
         
         console.log(`User ${currentParticipant.participantId} time expired, sending random select request...`);
@@ -369,7 +370,55 @@ export default function Draft() {
         });
     };
 
-    // 드래프트 턴 시스템
+    // 시간 만료 시 처리 함수 (수정됨)
+    const handleTimeExpired = () => {
+        const currentParticipant = participants[currentTurnIndex];
+        
+        // 현재 참가자가 실제 사용자(data-is-user가 true)인 경우에만 자동 선택
+        if (currentParticipant && !isBot(currentParticipant) && currentParticipant.userFlag === true && !isSelectingPlayer) {
+            performUserAutoSelect();
+            return;
+        }
+        
+        // 그 외의 경우 (Bot이거나 data-is-user가 false인 다른 사용자) - 타이머 일시정지
+        console.log(`Time expired for participant ${currentParticipant?.participantId}, pausing timer and waiting for WebSocket response...`);
+        setIsTimerPaused(true);
+        setDraftTime(0);
+        return;
+    };
+
+    // 다음 턴으로 이동 (수정됨)
+    const moveToNextTurn = () => {
+        if (draftCompleted) return;
+        
+        console.log('Moving to next turn...');
+        
+        // 타이머 일시정지 해제
+        setIsTimerPaused(false);
+        
+        // 타이머들 정리
+        if (botAutoSelectTimer) {
+            clearTimeout(botAutoSelectTimer);
+            setBotAutoSelectTimer(null);
+        }
+        if (retryTimeoutRef.current) {
+            clearTimeout(retryTimeoutRef.current);
+            retryTimeoutRef.current = null;
+        }
+        if (turnTimer) {
+            clearInterval(turnTimer);
+            setTurnTimer(null);
+        }
+        
+        setCurrentTurnIndex(current => {
+            const nextIndex = (current + 1) % participants.length;
+            setDraftTime(45); // 새로운 턴 시작시 45초로 리셋
+            console.log(`Turn moved from ${current} to ${nextIndex}`);
+            return nextIndex;
+        });
+    };
+
+    // 드래프트 턴 시스템 (수정됨)
     useEffect(() => {
         if (!draftStarted || participants.length === 0 || draftCompleted) return;
 
@@ -380,10 +429,27 @@ export default function Draft() {
         const startTurnTimer = () => {
             const timer = setInterval(() => {
                 setDraftTime(prev => {
+                    // 타이머가 일시정지된 경우 카운트다운 멈춤
+                    if (isTimerPaused) {
+                        return prev;
+                    }
+                    
                     if (prev <= 1) {
                         // 시간 만료 처리
                         handleTimeExpired();
-                        return 45; // 타이머 리셋은 handleTimeExpired에서 처리
+                        
+                        // 현재 참가자 확인
+                        const currentParticipant = participants[currentTurnIndex];
+                        
+                        // 실제 사용자(data-is-user가 true)인 경우에만 45초로 리셋
+                        if (currentParticipant && 
+                            !isBot(currentParticipant) && 
+                            currentParticipant.userFlag === true) {
+                            return 45;
+                        }
+                        
+                        // Bot이거나 data-is-user가 false인 경우 0으로 유지
+                        return 0;
                     }
                     return prev - 1;
                 });
@@ -399,7 +465,7 @@ export default function Draft() {
         };
     }, [draftStarted, participants.length, draftCompleted]);
 
-    // 턴 시작 시 Bot 체크
+    // 턴 시작 시 Bot 체크 (수정됨 - Bot 자동 선택 제거)
     useEffect(() => {
         if (!draftStarted || draftCompleted || participants.length === 0) return;
         
@@ -413,20 +479,7 @@ export default function Draft() {
             isBot: isBot(currentParticipant)
         });
         
-        // Bot인 경우 즉시 자동 선택
-        if (isBot(currentParticipant)) {
-            console.log(`Bot turn detected for participant ${currentTurnIndex}`);
-            
-            // Bot 자동 선택을 위한 타이머 설정 (1-3초 랜덤 딜레이)
-            const delay = Math.floor(Math.random() * 2000) + 1000; // 1-3초
-            const botTimer = setTimeout(() => {
-                if (!draftCompleted && !isSelectingPlayer) {
-                    performBotAutoSelect();
-                }
-            }, delay);
-            
-            setBotAutoSelectTimer(botTimer);
-        }
+        // Bot 자동 선택 로직 제거 - Bot도 WebSocket 응답만 기다림
         
         return () => {
             if (botAutoSelectTimer) {
@@ -436,47 +489,12 @@ export default function Draft() {
         };
     }, [currentTurnIndex, draftStarted, draftCompleted, participants]);
 
-    // 시간 만료 시 처리
-    const handleTimeExpired = () => {
-        const currentParticipant = participants[currentTurnIndex];
-        
-        // 현재 참가자가 실제 사용자인 경우 자동 선택
-        if (currentParticipant && !isBot(currentParticipant) && !isSelectingPlayer) {
-            performUserAutoSelect();
-            return;
-        }
-        
-        // Bot이거나 다른 경우 다음 턴으로
-        moveToNextTurn();
-    };
-
-    // 다음 턴으로 이동
-    const moveToNextTurn = () => {
-        if (draftCompleted) return;
-        
-        console.log('Moving to next turn...');
-        
-        // 타이머들 정리
-        if (botAutoSelectTimer) {
-            clearTimeout(botAutoSelectTimer);
-            setBotAutoSelectTimer(null);
-        }
-        if (retryTimeoutRef.current) {
-            clearTimeout(retryTimeoutRef.current);
-            retryTimeoutRef.current = null;
-        }
-        
-        setCurrentTurnIndex(current => {
-            const nextIndex = (current + 1) % participants.length;
-            setDraftTime(45); // 새로운 턴 시작시 45초로 리셋
-            console.log(`Turn moved from ${current} to ${nextIndex}`);
-            return nextIndex;
-        });
-    };
-
-    // 턴 변경 시 타이머 리셋
+    // 턴 변경 시 타이머 리셋 (수정됨)
     useEffect(() => {
         if (!draftStarted || draftCompleted) return;
+
+        // 타이머 일시정지 해제
+        setIsTimerPaused(false);
 
         if (turnTimer) {
             clearInterval(turnTimer);
@@ -484,9 +502,26 @@ export default function Draft() {
 
         const newTimer = setInterval(() => {
             setDraftTime(prev => {
+                // 타이머가 일시정지된 경우 카운트다운 멈춤
+                if (isTimerPaused) {
+                    return prev;
+                }
+                
                 if (prev <= 1) {
                     handleTimeExpired();
-                    return 45;
+                    
+                    // 현재 참가자 확인
+                    const currentParticipant = participants[currentTurnIndex];
+                    
+                    // 실제 사용자(data-is-user가 true)인 경우에만 45초로 리셋
+                    if (currentParticipant && 
+                        !isBot(currentParticipant) && 
+                        currentParticipant.userFlag === true) {
+                        return 45;
+                    }
+                    
+                    // Bot이거나 data-is-user가 false인 경우 0으로 유지
+                    return 0;
                 }
                 return prev - 1;
             });
@@ -499,7 +534,7 @@ export default function Draft() {
         };
     }, [currentTurnIndex, draftStarted, draftCompleted]);
 
-    // WebSocket 연결 설정
+    // WebSocket 연결 설정 (일부 수정됨)
     useEffect(() => {
         const connectWebSocket = () => {
             const token = localStorage.getItem("accessToken");
@@ -508,7 +543,7 @@ export default function Draft() {
                 return;
             }
             
-            const socket = new SockJS(`http://localhost:8080/ws-draft?token=Bearer ${encodeURIComponent(token)}`);
+            const socket = new SockJS(`${import.meta.env.VITE_API_BASE_URL}/ws-draft?token=Bearer ${encodeURIComponent(token)}`);
             const stompClient = new Client({
                 webSocketFactory: () => socket,
                 debug: (str) => {
@@ -531,17 +566,18 @@ export default function Draft() {
                             
                             const currentParticipant = participants[currentTurnIndex];
                             
-                            // Bot인 경우 다시 시도
+                            // Bot인 경우 다시 시도 (Bot 자동 선택 제거)
                             if (currentParticipant && isBot(currentParticipant)) {
-                                console.log('Bot retrying selection...');
-                                retryTimeoutRef.current = setTimeout(() => {
-                                    if (!draftCompleted) {
-                                        performBotAutoSelect();
-                                    }
-                                }, 1000);
+                                console.log('Bot retrying selection - but auto selection removed, waiting for WebSocket...');
+                                // Bot 자동 선택 로직 제거 - WebSocket 응답만 기다림
                             } else {
-                                // 실제 사용자인 경우 알림만 표시
+                                // 실제 사용자인 경우 알림만 표시하고 타이머 재시작
                                 alert('이미 선택 된 선수입니다. 다시 선택해 주시기 바랍니다.');
+                                
+                                // data-is-user가 false인 다른 사용자의 경우 타이머를 45초로 재시작
+                                if (currentParticipant && !isBot(currentParticipant) && currentParticipant.userFlag !== true) {
+                                    setDraftTime(45);
+                                }
                             }
                         } else {
                             console.log('Player selection successful');
@@ -634,7 +670,7 @@ export default function Draft() {
     useEffect(() => {
         const fetchElementTypes = async () => {
             try {
-                const response = await fetch('http://localhost:8080/api/elementType/all');
+                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/elementType/all`);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -655,7 +691,7 @@ export default function Draft() {
         const fetchPlayers = async () => {
             try {
                 setLoading(true);
-                const response = await fetch('http://localhost:8080/api/playerCache');
+                const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/playerCache`);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
@@ -786,7 +822,7 @@ export default function Draft() {
                 params.append('elementTypeId', searchParams.elementTypeId);
             }
             
-            const response = await fetch(`http://localhost:8080/api/playerEs/search?${params.toString()}`);
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/playerEs/search?${params.toString()}`);
             
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
