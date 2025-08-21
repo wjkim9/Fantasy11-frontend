@@ -34,7 +34,7 @@ jobs:
           aws-region: ap-northeast-2
 
       - name: Deploy to S3
-        run: aws s3 sync ./MLB-frontend/dist s3://fantasy11bucket --delete
+        run: aws s3 sync ./dist s3://fantasy11bucket --delete
 
       - name: Invalidate CloudFront cache
         run: aws cloudfront create-invalidation \
