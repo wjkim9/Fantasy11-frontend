@@ -1,13 +1,10 @@
-
 name: Deploy Frontend to S3
 
 on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main 
+  workflow_dispatch: {}
 
 jobs:
   build-and-deploy:
@@ -40,7 +37,9 @@ jobs:
           aws-region: ap-northeast-2
 
       - name: Deploy to S3
-        run: aws s3 sync ./dist s3://fantasy11bucket --delete
+        run: aws s3 sync ./MLB-frontend/dist s3://fantasy11bucket --delete
 
       - name: Invalidate CloudFront cache
-        run: aws cloudfront create-invalidation --distribution-id E2PWXMJH8SH20I --paths "/*"
+        run: aws cloudfront create-invalidation \
+          --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+          --paths "/*"
