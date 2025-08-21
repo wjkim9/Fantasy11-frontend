@@ -95,7 +95,9 @@ export default function Main() {
     const fetchTopUsers = async () => {
         try {
             setIsLoadingUsers(true);
+
             const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/user/seasonBestScore`);
+
             const data = res.ok ? await res.json() : [];
             setTopUsers(data);
         } catch {
@@ -107,7 +109,9 @@ export default function Main() {
     const fetchTopPlayers = async () => {
         try {
             setIsLoadingPlayers(true);
+
             const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/player/previousPlayer`);
+
             const data = res.ok ? await res.json() : [];
             setTopPlayers(data);
         } catch {
@@ -119,7 +123,9 @@ export default function Main() {
     const fetchTeamTable = async () => {
         try {
             setIsLoadingTeams(true);
+
             const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/team/getTable`);
+
             const data = res.ok ? await res.json() : [];
             setTeamTable(data);
         } catch {
@@ -219,6 +225,35 @@ export default function Main() {
             return;
         }
         navigate("/waiting");
+    };
+
+    // Main.jsx 수정 - draft-btn 아래에 추가
+// handleDraftClick 함수 아래에 이 함수 추가:
+
+    const handleChatroomClick = async () => {
+        if (!isLoggedIn) {
+            const go = window.confirm("로그인이 필요합니다. 로그인 페이지로 이동할까요?");
+            if (go) navigate("/login");
+            return;
+        }
+
+        try {
+            // 사용자의 현재 채팅방 정보 조회
+            const response = await axiosInstance.get("/api/user/current-room");
+            if (response.data && response.data.roomId) {
+                navigate(`/chatroom/${response.data.roomId}`);
+            } else {
+                alert("참가중인 채팅방이 없습니다. 드래프트에 먼저 참가해주세요.");
+            }
+        } catch (error) {
+            console.error("채팅방 정보 조회 실패:", error);
+            if (error.response?.status === 401) {
+                alert("로그인이 만료되었습니다. 다시 로그인해주세요.");
+                navigate("/login");
+            } else {
+                alert("채팅방 정보를 불러올 수 없습니다. 잠시 후 다시 시도해주세요.");
+            }
+        }
     };
 
     const draftDisabled = matchState !== "OPEN";
@@ -461,6 +496,27 @@ export default function Main() {
                     >
                         🏆 드래프트 참가
                     </button>
+                    <button
+                        className="chatroom-btn"
+                        onClick={handleChatroomClick}
+                        style={{
+                            width: '100%',
+                            background: 'linear-gradient(45deg, #4CAF50, #45a049)',
+                            color: 'white',
+                            border: 'none',
+                            padding: '1.2rem',
+                            borderRadius: '10px',
+                            fontSize: '1.2rem',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            marginBottom: '1rem',
+                            transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+                            boxShadow: '0 4px 15px rgba(76, 175, 80, 0.3)'
+                        }}
+                    >
+                        💬 채팅방 입장
+                    </button>
+
 
                     <h2 className="section-title">Top 10 순위</h2>
                     <ul className="ranking-list">{renderTopUsers()}</ul>
