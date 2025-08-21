@@ -1,218 +1,170 @@
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
+/* Reset (페이지 한정) */
+* { box-sizing: border-box; }
+:root { --header-h: 80px; }
 
 body {
-    font-family: 'Arial', sans-serif;
+    font-family: 'Arial', ui-sans-serif, -apple-system, Segoe UI, Roboto, "Noto Sans KR", sans-serif;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     min-height: 100vh;
     color: #333;
-    overflow: hidden;
+    /* 잘림 원인 제거 */
+    overflow-x: hidden;
+    overflow-y: auto;
+    display: block; /* 전역과 한 번 더 명시 */
 }
 
-.header {
-    background: rgba(255, 255, 255, 0.95);
+/* Header – 기존 스타일 유지, 과한 그림자 제거 */
+.header{
+    background: rgba(255,255,255,0.95);
     backdrop-filter: blur(10px);
     padding: 1rem 2rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+    display: flex; justify-content: space-between; align-items: center;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+}
+.logo{
+    font-size: 2rem; font-weight: 800; color: #764ba2; cursor: pointer;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.06);
 }
 
-.logo {
-    font-size: 2rem;
-    font-weight: bold;
-    color: #764ba2;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
-    cursor: pointer;
-    transition: transform 0.3s ease;
+/* 메인 컨테이너 – 뷰포트 기준 ‘진짜’ 중앙정렬 */
+.waiting-container{
+    width: 100%;
+    min-height: calc(100vh - var(--header-h));
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    padding-top: var(--header-h);
+    min-height: 100dvh;
 }
 
-.logo:hover {
-    transform: scale(1.05);
-}
-
-.back-btn {
-    background: linear-gradient(45deg, #667eea, #764ba2);
-    color: white;
-    border: none;
-    padding: 0.8rem 2rem;
-    border-radius: 25px;
-    cursor: pointer;
-    font-size: 1rem;
-    font-weight: bold;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-    box-shadow: 0 4px 15px rgba(118, 75, 162, 0.3);
-}
-
-.back-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(118, 75, 162, 0.4);
-}
-
-.waiting-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: calc(100vh - 100px);
-    padding: 2rem;
-}
-
-.waiting-card {
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(10px);
-    border-radius: 20px;
-    padding: 4rem;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+/* 카드 – 고정 min-width 제거(잘림 원인), 반응형 최대폭으로 */
+.waiting-card{
+    width: min(640px, 92vw);
+    padding: clamp(20px, 4vw, 28px);
+    border-radius: 18px;
+    background: rgba(255,255,255,0.94);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.12);
     text-align: center;
-    min-width: 500px;
-    animation: cardPulse 2s ease-in-out infinite;
+    margin: 0 auto; /* 안전 중앙 */
+    animation: none; /* 과한 펄스 제거 */
 }
 
-@keyframes cardPulse {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.02); }
+/* 타이포 */
+.waiting-count{
+    font-size: clamp(22px, 2.8vw, 34px);
+    font-weight: 900; color: #5a3fb3; letter-spacing: .3px;
+    margin-bottom: 10px;
 }
-
-.waiting-count {
-    font-size: 3rem;
-    font-weight: bold;
-    color: #764ba2;
-    margin-bottom: 2rem;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
-    animation: countAnimation 1s ease-in-out infinite;
+.waiting-status{
+    display: inline-flex; align-items: center; gap: 10px;
+    font-size: 14px; color: #6b7280; margin-bottom: 16px;
 }
-
-@keyframes countAnimation {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.7; }
-}
-
-.waiting-status {
-    font-size: 1.5rem;
-    color: #666;
-    margin-bottom: 3rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 1rem;
-}
-
-.loading-spinner {
-    width: 30px;
-    height: 30px;
-    border: 3px solid rgba(118, 75, 162, 0.3);
-    border-top: 3px solid #764ba2;
-    border-radius: 50%;
+.loading-spinner{
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid rgba(118,75,162,.25); border-top-color:#764ba2;
     animation: spin 1s linear infinite;
 }
+@keyframes spin{ to{ transform: rotate(360deg); } }
 
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+/* 타이머 박스 – 가독성만 올리고 사이즈 안정화 */
+.countdown-container{
+    margin: 12px auto 6px;
+    padding: 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,107,107,.2);
+    background: linear-gradient(180deg, rgba(255,107,107,.2), rgba(255,107,107,.12));
+}
+.countdown-title{
+    font-size: 13px; font-weight: 700; color: #a03a3a; margin-bottom: 6px;
+}
+.countdown-timer{
+    font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace;
+    font-size: clamp(28px, 5vw, 44px);
+    font-weight: 900; letter-spacing: 2px; color: #2b2b2b;
 }
 
-.countdown-container {
-    background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
-    color: white;
-    padding: 2rem;
-    border-radius: 15px;
-    margin-bottom: 2rem;
-    box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+/* 참가자 리스트 */
+.participants-list{
+    margin-top: 16px; padding: 14px; text-align: left;
+    border-radius: 14px; background: rgba(102,126,234,.08);
+    border: 1px solid rgba(102,126,234,.18);
+}
+.participants-title{
+    font-size: 13px; font-weight: 700; color: #5a3fb3; margin-bottom: 8px;
+}
+.participant-item{
+    display:flex; align-items:center; justify-content:space-between;
+    padding: 10px 0; border-bottom: 1px dashed rgba(0,0,0,.08);
+}
+.participant-item:last-child{ border-bottom: none; }
+.participant-name{ color:#111827; }
+.participant-status{
+    font-size: 12px; font-weight: 800;
+    color:#0a7d4b; background: rgba(53,208,127,.14);
+    border:1px solid rgba(53,208,127,.35);
+    padding: 4px 10px; border-radius: 999px;
 }
 
-.countdown-title {
-    font-size: 1.2rem;
-    margin-bottom: 1rem;
-    font-weight: bold;
+/* 액션 */
+.cancel-btn{
+    margin-top: 18px; width: 100%; padding: 12px 16px; border-radius: 12px;
+    border: 1px solid rgba(255,107,107,.35);
+    background: linear-gradient(180deg, rgba(255,107,107,.18), rgba(255,107,107,.12));
+    color:#a82121; font-weight: 800;
+    transition: transform .15s ease, filter .15s ease;
+}
+.cancel-btn:hover{ transform: translateY(-1px); filter: brightness(1.05); }
+
+/* 모바일 대응 */
+@media (max-width: 480px){
+    .waiting-card{ width: min(560px, 94vw); padding: 18px; }
+    .participants-list{ padding: 12px; }
 }
 
-.countdown-timer {
-    font-size: 2.5rem;
-    font-weight: bold;
-    font-family: 'Courier New', monospace;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
-    animation: timerPulse 1s ease-in-out infinite;
+/* --- 배경을 페이지 전체에 항상 깔아두기 --- */
+html, body { min-height: 100%; }
+body { background: transparent !important; }  /* 기존 body 배경은 비워둠 */
+
+body::before{
+    content: "";
+    position: fixed;
+    inset: 0;                 /* 화면 전체 덮기 */
+    z-index: -1;              /* 모든 콘텐츠 뒤로 */
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    pointer-events: none;     /* 클릭 방해 X */
 }
 
-@keyframes timerPulse {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.1); }
+/* 카드 입체감과 대비 살짝 업 */
+.waiting-card{
+    background: rgba(255,255,255,0.96);
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 16px 42px rgba(0,0,0,.12);
+    border-radius: 18px;
 }
 
-.participants-list {
-    background: rgba(102, 126, 234, 0.1);
-    border-radius: 10px;
-    padding: 1.5rem;
-    margin-top: 2rem;
+/* 타이머 박스는 채도/경계만 정돈 */
+.countdown-container{
+    background: linear-gradient(180deg, rgba(255,107,107,.14), rgba(255,107,107,.08));
+    border: 1px solid rgba(255,107,107,.18);
+    backdrop-filter: saturate(1.1);
 }
 
-.participants-title {
-    font-size: 1.1rem;
-    font-weight: bold;
-    color: #764ba2;
-    margin-bottom: 1rem;
+/* 섹션 카드도 통일감 있게 */
+.participants-list{
+    background: rgba(118,75,162,.07);
+    border: 1px solid rgba(118,75,162,.16);
+    border-radius: 14px;
 }
 
-.participant-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+/* 버튼 인터랙션 */
+.cancel-btn{
+    transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+}
+.cancel-btn:hover{
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(255,107,107,.22);
 }
 
-.participant-item:last-child {
-    border-bottom: none;
-}
 
-.participant-name {
-    color: #333;
-}
-
-.participant-status {
-    background: #4CAF50;
-    color: white;
-    padding: 0.2rem 0.8rem;
-    border-radius: 12px;
-    font-size: 0.8rem;
-    font-weight: bold;
-}
-
-.cancel-btn {
-    background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
-    color: white;
-    border: none;
-    padding: 1rem 2rem;
-    border-radius: 25px;
-    cursor: pointer;
-    font-size: 1rem;
-    font-weight: bold;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-    box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
-    margin-top: 2rem;
-}
-
-.cancel-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
-}
-
-@media (max-width: 768px) {
-    .waiting-card {
-        min-width: 300px;
-        padding: 2rem;
-    }
-
-    .waiting-count {
-        font-size: 2rem;
-    }
-
-    .countdown-timer {
-        font-size: 2rem;
-    }
-}
