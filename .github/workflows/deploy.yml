@@ -24,7 +24,14 @@ jobs:
         run: npm install
 
       - name: Build application
-        run: npm run build
+        env:
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_API_WS_URL: ${{ secrets.VITE_API_WS_URL }}
+        run: |
+          echo "--- DEBUGGING STEP ---"
+          echo "VITE_API_BASE_URL is: $VITE_API_BASE_URL"
+          echo "----------------------"
+          npm run build
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
