@@ -222,14 +222,31 @@ export default function Chatroom() {
   };
 
   // 시간 포맷
-  const formatTime = (timestamp) => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('ko-KR', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    });
+  const normalizeIsoToMs = (ts) => {
+    if (!ts) return null;
+    if (ts instanceof Date || typeof ts === 'number') return ts;
+    if (typeof ts === 'string') {
+      // 예: 2025-08-22T08:31:51.119840414Z → 2025-08-22T08:31:51.119Z
+      return ts.replace(/(\.\d{3})\d+(Z|[+\-]\d{2}:\d{2})$/, '$1$2');
+    }
+    return ts;
   };
+
+  const formatTime = (timestamp) => {
+    const safe = normalizeIsoToMs(timestamp);
+    const date = safe ? new Date(safe) : new Date();
+    if (isNaN(date)) return '';
+    try {
+      return date.toLocaleTimeString('ko-KR', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch {
+      return '';
+    }
+  };
+
 
   // 메시지 포맷 변환
   const formatMessage = useCallback((item) => {
