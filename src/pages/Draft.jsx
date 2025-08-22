@@ -65,6 +65,44 @@ export default function Draft() {
         }
     }, [draftId]);
 
+    // 새로고침 방지 및 창 닫기 확인 기능
+    useEffect(() => {
+        // 새로고침 방지 (F5, Ctrl+R 등)
+        const handleKeyDown = (e) => {
+            // F5 키 방지
+            if (e.key === 'F5') {
+                e.preventDefault();
+                alert('드래프트 중 새로고침은 불가합니다.');
+                return false;
+            }
+            
+            // Ctrl+R (새로고침) 방지
+            if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+                e.preventDefault();
+                alert('드래프트 중 새로고침은 불가합니다.');
+                return false;
+            }
+        };
+
+        // beforeunload 이벤트로 창 닫기/새로고침 시도 감지
+        const handleBeforeUnload = (e) => {
+            const message = '정말로 창 닫기 하시겠습니까? 해당 드래프트방에 다시 돌아올 수 없습니다.';
+            e.preventDefault();
+            e.returnValue = message; // Chrome에서 필요
+            return message; // 다른 브라우저에서 필요
+        };
+
+        // 이벤트 리스너 등록
+        document.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        // 컴포넌트 언마운트 시 이벤트 리스너 제거
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+        };
+    }, []);
+
     // Bot 판별 함수
     const isBot = (participant) => {
         return participant.userFlag === false && 
