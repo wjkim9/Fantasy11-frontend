@@ -5,7 +5,6 @@ import {useInView} from 'react-intersection-observer';
 import SockJS from 'sockjs-client';
 import {Client} from '@stomp/stompjs';
 import debounce from 'lodash.debounce';
-// import axiosInstance from '../api/axiosConfig'; // 프로젝트 구조에 맞게 경로 수정 필요
 import axios from 'axios';
 
 // axiosInstance 직접 생성 (동적 토큰 처리)
@@ -27,18 +26,19 @@ axiosInstance.interceptors.request.use(
     }
 );
 
-const RAW_WS_BASE =
-    (typeof import.meta !== 'undefined' &&
-        import.meta.env &&
-        import.meta.env.VITE_API_WS_URL) ||
-    (typeof window !== 'undefined' && window.REACT_APP_WS_BASE_URL) ||
-    'ws://localhost:8080';
+// WebSocket URL 처리 (로컬/배포 환경 대응)
+const getWebSocketUrl = () => {
+  const wsUrl = import.meta.env.VITE_API_WS_URL || 'ws://localhost:8080';
 
-// 끝 슬래시 제거 + ws/wss → http/https 변환
-const SOCKJS_ORIGIN = RAW_WS_BASE
-.replace(/\/$/, '')
-.replace(/^wss:\/\//, 'https://')
-.replace(/^ws:\/\//, 'http://');
+  // 배포 환경에서는 wss://가 설정되어 있을 것이므로 그대로 사용
+  // 로컬 환경에서는 ws://를 http://로 변환
+  return wsUrl
+  .replace(/\/$/, '')
+  .replace(/^wss:\/\//, 'https://')
+  .replace(/^ws:\/\//, 'http://');
+};
+
+const SOCKJS_ORIGIN = getWebSocketUrl();
 
 export default function Chatroom() {
   const navigate = useNavigate();
@@ -247,30 +247,24 @@ export default function Chatroom() {
     }
   };
 
-
-  // 메시지 포맷 변환
+  // 메시지 포맷 변환 (수정됨 - 사용자 이름 결정 로직 개선)
   const formatMessage = useCallback((item) => {
-    // 사용자 이름 결정
     let userName = '시스템';
     if (item.type === 'ALERT' || item.type === 'SYSTEM') {
       userName = '⚽ 알림';
     } else if (item.userId) {
-      // 스코어보드에서 사용자 정보 찾기
-      const user = scoreboard.find(s => s.userId === item.userId);
-      if (user) {
-        userName = user.email;
-      } else if (currentUser && item.userId === currentUser.id) {
-        // 현재 사용자인 경우 현재 사용자 이메일 사용
+      // 현재 사용자인지 먼저 확인
+      if (currentUser && item.userId === currentUser.id) {
         userName = currentUser.email;
       } else {
-        // 디버깅: Unknown인 경우 정보 출력
-        console.log('Unknown user detected:', {
-          userId: item.userId,
-          currentUser: currentUser,
-          scoreboard: scoreboard,
-          content: item.content
-        });
-        userName = 'Unknown';
+        // 스코어보드에서 사용자 정보 찾기
+        const user = scoreboard.find(s => s.userId === item.userId);
+        if (user && user.email) {
+          userName = user.email;
+        } else {
+          // 스코어보드에 없는 사용자는 기본값으로 처리
+          userName = '알 수 없는 사용자';
+        }
       }
     }
 
@@ -376,7 +370,7 @@ export default function Chatroom() {
     }
 
     try {
-      // 시크릿이 wss://여도 SOCKJS_ORIGIN이 https://로 변환됨
+      // SOCKJS_ORIGIN이 이미 http(s)://로 변환되어 있음
       const socket = new SockJS(`${SOCKJS_ORIGIN}/ws`);
       const stompClient = new Client({
         webSocketFactory: () => socket,
@@ -393,18 +387,29 @@ export default function Chatroom() {
           // 채팅방 구독
           const subscription = stompClient.subscribe(
               `/topic/chat/${actualRoomId}`, (message) => {
-                console.log('=== WebSocket 메시지 수신 ===');
-                console.log('Raw message:', message.body);
-                console.log('Connection status:', stompClient.connected);
-                console.log('Chat list length before:', chatList.length);
-                
                 const newMessage = JSON.parse(message.body);
-                console.log('Parsed message:', newMessage);
 
-                // formatMessage 함수 사용하여 일관성 있는 포맷팅
+                // 사용자 이름 결정 (formatMessage와 동일한 로직 사용)
+                let userName = '시스템';
+                if (newMessage.type === 'ALERT' || newMessage.type === 'SYSTEM') {
+                  userName = '⚽ 알림';
+                } else if (newMessage.userId) {
+                  if (currentUser && newMessage.userId === currentUser.id) {
+                    userName = currentUser.email;
+                  } else {
+                    // 스코어보드에서 사용자 정보 찾기
+                    const user = scoreboard.find(s => s.userId === newMessage.userId);
+                    if (user && user.email) {
+                      userName = user.email;
+                    } else {
+                      userName = '알 수 없는 사용자';
+                    }
+                  }
+                }
+
                 const formattedMessage = {
                   id: newMessage.id || Date.now().toString(),
-                  user: '임시사용자', // 먼저 임시값 설정
+                  user: userName,
                   text: newMessage.content,
                   time: formatTime(newMessage.createdAt || new Date()),
                   type: newMessage.type,
@@ -413,14 +418,12 @@ export default function Chatroom() {
 
                 setChatList(prev => {
                   const newList = [...prev, formattedMessage];
-                  console.log('새 메시지 추가:', formattedMessage);
 
                   // 새 메시지 추가 후 즉시 스크롤을 맨 아래로
                   requestAnimationFrame(() => {
                     if (chatRef.current) {
                       const scrollElement = chatRef.current;
                       scrollElement.scrollTop = scrollElement.scrollHeight;
-                      console.log('스크롤 위치 조정:', scrollElement.scrollTop, scrollElement.scrollHeight);
                     }
                   });
 
@@ -494,11 +497,10 @@ export default function Chatroom() {
       console.error('WebSocket 연결 실패:', error);
       setIsConnected(false);
     }
-  }, [actualRoomId]);
+  }, [actualRoomId, currentUser, scoreboard]);
 
   // 메시지 전송
   const handleSendMessage = () => {
-
     if (isComposing) {
       return;
     }
@@ -588,36 +590,40 @@ export default function Chatroom() {
     }
   }, [selectedParticipantId]);
 
-  // WebSocket 연결 (스코어보드 로드 후)
+  // WebSocket 연결 (스코어보드와 현재 사용자 정보 로드 후)
   useEffect(() => {
-    if (scoreboard.length > 0 && !isConnected) {
+    if (scoreboard.length > 0 && currentUser && !isConnected) {
       connectWebSocket();
     }
-  }, [scoreboard, connectWebSocket]);
+  }, [scoreboard, currentUser, connectWebSocket]);
 
   // 사용자 정보 또는 스코어보드 업데이트 시 기존 메시지 다시 포맷팅
   useEffect(() => {
     if ((currentUser || scoreboard.length > 0) && chatList.length > 0) {
       setChatList(prevList =>
-          prevList.map(msg => ({
-            ...msg,
-            user: (() => {
-              // 메시지가 이미 포맷된 것이면서 userId가 있는 경우만 다시 처리
-              if (!msg.userId || msg.user === '⚽ 알림' || msg.user === '시스템') {
-                return msg.user;
-              }
+          prevList.map(msg => {
+            // 이미 포맷된 메시지에서 사용자 이름만 업데이트
+            if (!msg.userId || msg.user === '⚽ 알림' || msg.user === '시스템') {
+              return msg;
+            }
 
-              // 스코어보드에서 사용자 정보 찾기
+            let newUserName = msg.user;
+            if (currentUser && msg.userId === currentUser.id) {
+              newUserName = currentUser.email;
+            } else {
               const user = scoreboard.find(s => s.userId === msg.userId);
-              if (user) {
-                return user.email;
-              } else if (currentUser && msg.userId === currentUser.id) {
-                return currentUser.email;
+              if (user && user.email) {
+                newUserName = user.email;
               } else {
-                return msg.user; // 기존 값 유지 (Unknown일 수도 있음)
+                newUserName = '알 수 없는 사용자';
               }
-            })()
-          }))
+            }
+
+            return {
+              ...msg,
+              user: newUserName
+            };
+          })
       );
     }
   }, [currentUser, scoreboard]);
@@ -750,7 +756,7 @@ export default function Chatroom() {
               {activeTab === 'participants' && (
                   <div className="participants-tab">
                     <div className="participants-list">
-                      {scoreboard.map((participant, index) => {
+                      {scoreboard.map((participant) => {
                         // 메달 이모티콘 결정
                         const getMedalIcon = (rank) => {
                           switch (rank) {
@@ -939,8 +945,7 @@ export default function Chatroom() {
                   onChange={(e) => setMessage(e.target.value)}
                   onCompositionStart={() => setIsComposing(true)}
                   onCompositionEnd={(e) => {
-                    // 조합
-                    // 종료 시 최종 텍스트 반영(안전)
+                    // 조합 종료 시 최종 텍스트 반영(안전)
                     setMessage(e.currentTarget.value);
                     setIsComposing(false);
                   }}

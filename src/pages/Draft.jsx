@@ -14,19 +14,19 @@ const axiosInstance = axios.create({
     baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
 });
 
-// WebSocket URL 처리 (Chatroom.jsx와 동일한 로직)
-const RAW_WS_BASE =
-    (typeof import.meta !== 'undefined' &&
-        import.meta.env &&
-        import.meta.env.VITE_API_WS_URL) ||
-    (typeof window !== 'undefined' && window.REACT_APP_WS_BASE_URL) ||
-    'ws://localhost:8080';
+// WebSocket URL 처리 (로컬/배포 환경 대응)
+const getWebSocketUrl = () => {
+    const wsUrl = import.meta.env.VITE_API_WS_URL || 'ws://localhost:8080';
 
-// 끝 슬래시 제거 + ws/wss → http/https 변환
-const SOCKJS_ORIGIN = RAW_WS_BASE
+    // 배포 환경에서는 wss://가 설정되어 있을 것이므로 그대로 사용
+    // 로컬 환경에서는 ws://를 http://로 변환
+    return wsUrl
     .replace(/\/$/, '')
     .replace(/^wss:\/\//, 'https://')
     .replace(/^ws:\/\//, 'http://');
+};
+
+const SOCKJS_ORIGIN = getWebSocketUrl();
 
 // 요청 인터셉터 추가
 axiosInstance.interceptors.request.use(
@@ -145,39 +145,42 @@ export default function Draft() {
     // Draft.jsx
     const fetchChatRoomId = async () => {
         try {
+            console.log('🔍 채팅방 ID 조회 시작, draftId:', draftId);
             // 1) 드래프트로 채팅방 조회
             const { data } = await axiosInstance.get(`/api/chat-rooms/by-draft/${draftId}`);
+            console.log('✅ 채팅방 조회 성공:', data);
             setChatRoomId(data.id);
             return data.id;
         } catch (error) {
             console.error('❌ Chat Room ID 조회 실패:', error?.response?.status, error?.message);
+            console.error('❌ 에러 세부 정보:', error?.response?.data);
 
             // 2) 404면 채팅방을 생성(백엔드 스펙에 맞게 URL/바디 조정)
             if (error?.response?.status === 404) {
                 try {
+                    console.log('📝 채팅방 생성 시도, draftId:', draftId);
                     // (A안) POST /api/chat-rooms  { draftId }
                     const { data: created } = await axiosInstance.post('/api/chat-rooms', { draftId });
+                    console.log('✅ 채팅방 생성 성공:', created);
                     setChatRoomId(created.id);
-                    console.log('✅ 채팅방 생성 성공:', created.id);
                     return created.id;
                 } catch (e2) {
                     console.error('❌ 채팅방 생성 실패:', e2?.response?.status, e2?.message);
+                    console.error('❌ 생성 에러 세부 정보:', e2?.response?.data);
 
                     // (B안) 만약 생성 엔드포인트가 /api/chat-rooms/by-draft/{draftId} POST 라면:
                     // const { data: created } = await axiosInstance.post(`/api/chat-rooms/by-draft/${draftId}`);
 
-                    // 3) 최후 수단 Fallback: 기존처럼 draftId를 그대로 사용 (백엔드가 draftId 기준으로도 동작하던 환경용)
-                    // 👉 백엔드가 반드시 chat_room.id를 요구한다면 이 fallback은 주석 처리하고 BE 먼저 수정하세요.
-                    setChatRoomId(draftId);
-                    console.warn('⚠️ 서버에 채팅방이 없어 draftId를 임시 roomId로 사용합니다. (BE 정비 전 임시)');
-                    return draftId;
+                    console.error('💥 채팅방 생성 실패 - 채팅 기능 비활성화');
+                    setChatRoomId(null);
+                    return null;
                 }
             }
 
+            console.error('💥 채팅방 조회/생성 모두 실패, null 반환');
             return null;
         }
     };
-
 
     // 시간 포맷
     const formatTime = (timestamp) => {
@@ -189,16 +192,24 @@ export default function Draft() {
         });
     };
 
-    // 메시지 포맷 변환
+    // 메시지 포맷 변환 (수정됨 - 사용자 이름 결정 로직 개선)
     const formatMessage = useCallback((item) => {
         let userName = '시스템';
         if (item.type === 'ALERT' || item.type === 'SYSTEM') {
             userName = '⚽ 알림';
         } else if (item.userId) {
+            // 현재 사용자인지 먼저 확인
             if (currentUser && item.userId === currentUser.id) {
                 userName = currentUser.email;
             } else {
-                userName = 'Unknown';
+                // 참가자 목록에서 사용자 정보 찾기
+                const participant = participants.find(p => p.userId === item.userId);
+                if (participant && participant.userEmail) {
+                    userName = participant.userEmail;
+                } else {
+                    // 참가자 목록에 없는 사용자는 기본값으로 처리
+                    userName = '알 수 없는 사용자';
+                }
             }
         }
 
@@ -210,7 +221,7 @@ export default function Draft() {
             type: item.type,
             userId: item.userId
         };
-    }, [currentUser]);
+    }, [currentUser, participants]);
 
     // 채팅 히스토리 초기 로드 (최신 메시지부터)
     const loadInitialHistory = async () => {
@@ -369,7 +380,7 @@ export default function Draft() {
         }
     }, [inView, hasMore, loading, isInitialLoad, debouncedLoadMore]);
 
-    // 채팅 WebSocket 연결
+    // 채팅 WebSocket 연결 (수정됨 - 사용자 이름 처리 개선)
     const connectChatWebSocket = useCallback(() => {
         if (chatStompClientRef.current?.connected || !chatRoomId) return;
 
@@ -384,7 +395,7 @@ export default function Draft() {
         console.log('draftId:', draftId);
         console.log('chatRoomId:', chatRoomId);
         console.log('token 존재:', !!token);
-        console.log('wsUrl:', import.meta.env.VITE_API_WS_URL || 'ws://localhost:8080');
+        console.log('wsUrl:', SOCKJS_ORIGIN);
 
         try {
             const socket = new SockJS(`${SOCKJS_ORIGIN}/ws`);
@@ -406,6 +417,7 @@ export default function Draft() {
                         console.log('✅ 채팅 메시지 수신:', message.body);
                         const newMessage = JSON.parse(message.body);
 
+                        // 사용자 이름 결정 (formatMessage와 동일한 로직)
                         let userName = '시스템';
                         if (newMessage.type === 'ALERT' || newMessage.type === 'SYSTEM') {
                             userName = '⚽ 알림';
@@ -413,7 +425,13 @@ export default function Draft() {
                             if (currentUser && newMessage.userId === currentUser.id) {
                                 userName = currentUser.email;
                             } else {
-                                userName = 'Unknown';
+                                // 참가자 목록에서 사용자 정보 찾기
+                                const participant = participants.find(p => p.userId === newMessage.userId);
+                                if (participant && participant.userEmail) {
+                                    userName = participant.userEmail;
+                                } else {
+                                    userName = '알 수 없는 사용자';
+                                }
                             }
                         }
 
@@ -427,6 +445,13 @@ export default function Draft() {
                         };
 
                         setChatList(prev => {
+                            // 중복 메시지 방지: 같은 ID의 메시지가 이미 있는지 확인
+                            const isDuplicate = prev.some(msg => msg.id === formattedMessage.id);
+                            if (isDuplicate) {
+                                console.log('중복 메시지 무시:', formattedMessage.id);
+                                return prev;
+                            }
+
                             const newList = [...prev, formattedMessage];
 
                             setTimeout(() => {
@@ -437,7 +462,7 @@ export default function Draft() {
 
                             return newList;
                         });
-                    },{ Authorization: `Bearer ${token}` });
+                    });
 
                     console.log('채팅 구독 완료:', subscription);
                 },
@@ -471,7 +496,7 @@ export default function Draft() {
             console.error('채팅 WebSocket 연결 실패:', error);
             setIsConnected(false);
         }
-    }, [draftId, chatRoomId, currentUser]);
+    }, [draftId, chatRoomId, currentUser, participants]);
 
     useEffect(() => {
         if (!draftId) {
@@ -490,40 +515,49 @@ export default function Draft() {
         (async () => {
             await loadInitialHistory();
             await fetchReadState();
-            if (currentUser && !isConnected) {
+            if (currentUser && participants.length > 0 && !isConnected) {
                 connectChatWebSocket();
             }
         })();
-    }, [chatRoomId, currentUser]);
+    }, [chatRoomId, currentUser, participants]);
 
-    // 사용자 정보 로드 후 WebSocket 연결
+    // 사용자 정보와 참가자 정보 로드 후 WebSocket 연결
     useEffect(() => {
-        if (currentUser && !isConnected) {
+        if (currentUser && participants.length > 0 && chatRoomId && !isConnected) {
             connectChatWebSocket();
         }
-    }, [currentUser, connectChatWebSocket]);
+    }, [currentUser, participants, chatRoomId, connectChatWebSocket]);
 
-    // 사용자 정보 업데이트 시 기존 메시지 다시 포맷팅
+    // 사용자 정보 또는 참가자 정보 업데이트 시 기존 메시지 다시 포맷팅
     useEffect(() => {
-        if (currentUser && chatList.length > 0) {
+        if ((currentUser || participants.length > 0) && chatList.length > 0) {
             setChatList(prevList =>
-                prevList.map(msg => ({
-                    ...msg,
-                    user: (() => {
-                        if (!msg.userId || msg.user === '⚽ 알림' || msg.user === '시스템') {
-                            return msg.user;
-                        }
+                prevList.map(msg => {
+                    // 이미 포맷된 메시지에서 사용자 이름만 업데이트
+                    if (!msg.userId || msg.user === '⚽ 알림' || msg.user === '시스템') {
+                        return msg;
+                    }
 
-                        if (currentUser && msg.userId === currentUser.id) {
-                            return currentUser.email;
+                    let newUserName = msg.user;
+                    if (currentUser && msg.userId === currentUser.id) {
+                        newUserName = currentUser.email;
+                    } else {
+                        const participant = participants.find(p => p.userId === msg.userId);
+                        if (participant && participant.userEmail) {
+                            newUserName = participant.userEmail;
                         } else {
-                            return msg.user;
+                            newUserName = '알 수 없는 사용자';
                         }
-                    })()
-                }))
+                    }
+
+                    return {
+                        ...msg,
+                        user: newUserName
+                    };
+                })
             );
         }
-    }, [currentUser]);
+    }, [currentUser, participants]);
 
     // 새 메시지 추가 시 스크롤 및 읽음 표시 업데이트
     useEffect(() => {
@@ -622,7 +656,7 @@ export default function Draft() {
     // Bot 판별 함수
     const isBot = (participant) => {
         return participant.userFlag === false &&
-               (participant.userName === null || participant.userName.trim() === "");
+            (participant.userName === null || participant.userName.trim() === "");
     };
 
     // 현재 사용자의 차례인지 확인하는 함수
@@ -1043,8 +1077,7 @@ export default function Draft() {
         };
     }, [currentTurnIndex, draftStarted, draftCompleted, participants]);
 
-
-    // WebSocket 연결 설정 (일부 수정됨)
+    // WebSocket 연결 설정 (드래프트용 - 기존 로직 유지)
     useEffect(() => {
         const connectWebSocket = () => {
             const token = localStorage.getItem("accessToken");
@@ -1053,6 +1086,7 @@ export default function Draft() {
                 return;
             }
 
+            // 드래프트용 WebSocket URL (기존 로직 유지)
             const socket = new SockJS(`${import.meta.env.VITE_API_BASE_URL}/ws-draft?token=Bearer ${encodeURIComponent(token)}`);
             const stompClient = new Client({
                 webSocketFactory: () => socket,
@@ -1454,7 +1488,6 @@ export default function Draft() {
         }
     };
 
-
     // 드래프트 나가기
     const handleExit = () => {
         if (window.confirm('정말로 드래프트에서 나가시겠습니까?')) {
@@ -1554,8 +1587,8 @@ export default function Draft() {
                     <div className="timer">{formatDraftTime(draftTime)}</div>
                     <span>
                         {currentTurnParticipant && (
-                            `턴: ${!isBot(currentTurnParticipant) && currentTurnParticipant.userName && currentTurnParticipant.userName.trim() !== "" 
-                                ? currentTurnParticipant.userName 
+                            `턴: ${!isBot(currentTurnParticipant) && currentTurnParticipant.userName && currentTurnParticipant.userName.trim() !== ""
+                                ? currentTurnParticipant.userName
                                 : `Bot${currentTurnIndex + 1}`}님`
                         )}
                     </span>
@@ -1692,8 +1725,8 @@ export default function Draft() {
                                 <option value="">선택</option>
                                 {elementTypes.map(elementType => (
                                     <option key={elementType.id} value={elementType.id}
-                                        data-squad-min-play={elementType.squadMinPlay}
-                                        data-squad-max-play={elementType.squadMaxPlay}
+                                            data-squad-min-play={elementType.squadMinPlay}
+                                            data-squad-max-play={elementType.squadMaxPlay}
                                     >
                                         {elementType.krName && elementType.krName.trim() !== ''
                                             ? elementType.krName
@@ -1765,11 +1798,11 @@ export default function Draft() {
                                     onClick={() => handlePlayerSelect(player)}
                                     title={
                                         selectedPlayerIds.includes(player.id) ? '이미 선택된 선수입니다' :
-                                        !isPlayerSelectable(player.status) ? getStatusReason(player.status) : ''
+                                            !isPlayerSelectable(player.status) ? getStatusReason(player.status) : ''
                                     }
                                 >
                                     {selectedPlayerIds.includes(player.id) ? '선택됨' :
-                                     isSelectingPlayer ? '선택 중...' : '선택'}
+                                        isSelectingPlayer ? '선택 중...' : '선택'}
                                 </button>
 
                                 {/* hidden 데이터들 (화면에는 보이지 않음) */}
@@ -1873,7 +1906,7 @@ export default function Draft() {
                             )}
 
                             {!draftedPlayersLoading && !draftedPlayersError && selectedParticipantDraftedPlayers.map((draftedPlayer, idx) => (
-                                <div key={idx} className="my-player-item">
+                                <div key={`${draftedPlayer.participantId}-${draftedPlayer.playerId}-${idx}`} className="my-player-item">
                                     <div className="my-player-position">
                                         {getPositionCodeFromPluralName(draftedPlayer.elementTypePluralName)}
                                     </div>
