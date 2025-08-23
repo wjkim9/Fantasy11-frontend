@@ -1146,9 +1146,9 @@ export default function Draft() {
             
             <header className="header">
                 <div className="logo">Fantasy11</div>
-                <button className="cancel-btn" onClick={() => navigate('/chatroom')}>
+                {/* <button className="cancel-btn" onClick={() => navigate('/chatroom')}>
                     👉 채팅방 이동 (개발용)
-                </button>
+                </button> */}
                 <div className="draft-info">
                     <span>라운드 {currentRound}/11</span>
                     <div className="timer">{formatTime(draftTime)}</div>
