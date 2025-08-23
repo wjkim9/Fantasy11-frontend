@@ -170,11 +170,11 @@ body {
 }
 
 @keyframes scaleIn {
-    from { 
+    from {
         transform: scale(0.5);
         opacity: 0;
     }
-    to { 
+    to {
         transform: scale(1);
         opacity: 1;
     }
@@ -493,11 +493,11 @@ body {
 }
 
 @keyframes selectingPulse {
-    0%, 100% { 
+    0%, 100% {
         background: linear-gradient(45deg, #ff9800, #f57c00);
         transform: scale(1);
     }
-    50% { 
+    50% {
         background: linear-gradient(45deg, #ffa726, #fb8c00);
         transform: scale(1.02);
     }
@@ -579,10 +579,10 @@ body {
 }
 
 @keyframes selectedPulse {
-    0%, 100% { 
+    0%, 100% {
         box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
     }
-    50% { 
+    50% {
         box-shadow: 0 6px 20px rgba(76, 175, 80, 0.5);
         transform: scale(1.02);
     }
@@ -618,11 +618,11 @@ body {
 }
 
 @keyframes botActivePulse {
-    0%, 100% { 
+    0%, 100% {
         transform: scale(1);
         box-shadow: 0 4px 15px rgba(255, 152, 0, 0.4);
     }
-    50% { 
+    50% {
         transform: scale(1.03);
         box-shadow: 0 8px 25px rgba(255, 152, 0, 0.6);
     }
@@ -635,11 +635,11 @@ body {
 }
 
 @keyframes activePulse {
-    0%, 100% { 
+    0%, 100% {
         transform: scale(1);
         box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
     }
-    50% { 
+    50% {
         transform: scale(1.03);
         box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6);
     }
@@ -771,24 +771,24 @@ body {
     .section {
         min-height: 300px;
     }
-    
+
     .countdown-content h2 {
         font-size: 2rem;
     }
-    
+
     .countdown-content {
         padding: 2rem 3rem;
     }
-    
+
     .users-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .draft-info {
         gap: 1rem;
         font-size: 0.9rem;
     }
-    
+
     .my-players {
         max-height: 300px;
     }
@@ -800,34 +800,34 @@ body {
         flex-wrap: wrap;
         gap: 0.5rem;
     }
-    
+
     .draft-info {
         order: 3;
         width: 100%;
         justify-content: center;
     }
-    
+
     .countdown-content {
         padding: 1.5rem 2rem;
     }
-    
+
     .countdown-content h2 {
         font-size: 1.5rem;
     }
-    
+
     .warning-content {
         padding: 1.5rem 2rem;
     }
-    
+
     .warning-content p {
         font-size: 1.2rem;
     }
-    
+
     .my-players {
         max-height: 250px;
     }
 }333;
-    font-size: 0.9rem;
+font-size: 0.9rem;
 }
 
 /* 드래프트 완료 상태에서의 특별한 스타일 */
@@ -851,19 +851,19 @@ body {
     .section {
         min-height: 300px;
     }
-    
+
     .countdown-content h2 {
         font-size: 2rem;
     }
-    
+
     .countdown-content {
         padding: 2rem 3rem;
     }
-    
+
     .users-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .draft-info {
         gap: 1rem;
         font-size: 0.9rem;
@@ -876,25 +876,25 @@ body {
         flex-wrap: wrap;
         gap: 0.5rem;
     }
-    
+
     .draft-info {
         order: 3;
         width: 100%;
         justify-content: center;
     }
-    
+
     .countdown-content {
         padding: 1.5rem 2rem;
     }
-    
+
     .countdown-content h2 {
         font-size: 1.5rem;
     }
-    
+
     .warning-content {
         padding: 1.5rem 2rem;
     }
-    
+
     .warning-content p {
         font-size: 1.2rem;
     }
