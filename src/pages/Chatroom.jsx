@@ -393,31 +393,18 @@ export default function Chatroom() {
           // 채팅방 구독
           const subscription = stompClient.subscribe(
               `/topic/chat/${actualRoomId}`, (message) => {
-                console.log('메시지 수신:', message.body);
+                console.log('=== WebSocket 메시지 수신 ===');
+                console.log('Raw message:', message.body);
+                console.log('Connection status:', stompClient.connected);
+                console.log('Chat list length before:', chatList.length);
+                
                 const newMessage = JSON.parse(message.body);
+                console.log('Parsed message:', newMessage);
 
-                // 사용자 이름 결정
-                let userName = '시스템';
-                if (newMessage.type === 'ALERT' || newMessage.type
-                    === 'SYSTEM') {
-                  userName = '⚽ 알림';
-                } else if (newMessage.userId) {
-                  const user = scoreboard.find(
-                      s => s.userId === newMessage.userId);
-                  if (user) {
-                    userName = user.email;
-                  } else if (currentUser && newMessage.userId
-                      === currentUser.id) {
-                    // 현재 사용자인 경우 현재 사용자 이메일 사용
-                    userName = currentUser.email;
-                  } else {
-                    userName = 'Unknown';
-                  }
-                }
-
+                // formatMessage 함수 사용하여 일관성 있는 포맷팅
                 const formattedMessage = {
                   id: newMessage.id || Date.now().toString(),
-                  user: userName,
+                  user: '임시사용자', // 먼저 임시값 설정
                   text: newMessage.content,
                   time: formatTime(newMessage.createdAt || new Date()),
                   type: newMessage.type,
@@ -426,13 +413,16 @@ export default function Chatroom() {
 
                 setChatList(prev => {
                   const newList = [...prev, formattedMessage];
+                  console.log('새 메시지 추가:', formattedMessage);
 
-                  // 새 메시지 추가 후 스크롤을 맨 아래로 (카카오톡 방식)
-                  setTimeout(() => {
+                  // 새 메시지 추가 후 즉시 스크롤을 맨 아래로
+                  requestAnimationFrame(() => {
                     if (chatRef.current) {
-                      chatRef.current.scrollTop = chatRef.current.scrollHeight;
+                      const scrollElement = chatRef.current;
+                      scrollElement.scrollTop = scrollElement.scrollHeight;
+                      console.log('스크롤 위치 조정:', scrollElement.scrollTop, scrollElement.scrollHeight);
                     }
-                  }, 100);
+                  });
 
                   return newList;
                 });
@@ -504,7 +494,7 @@ export default function Chatroom() {
       console.error('WebSocket 연결 실패:', error);
       setIsConnected(false);
     }
-  }, [actualRoomId, scoreboard]);
+  }, [actualRoomId]);
 
   // 메시지 전송
   const handleSendMessage = () => {
