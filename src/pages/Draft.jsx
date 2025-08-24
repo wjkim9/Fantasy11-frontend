@@ -46,8 +46,10 @@ export default function Draft() {
     const [draftTime, setDraftTime] = useState(60); // 1. 45초 -> 60초로 변경
     const [myPlayerCount, setMyPlayerCount] = useState(2);
 
+
     // 채팅 관련 상태 (ChatRoom.jsx 패턴 적용)
     const [chatList, setChatList] = useState([]);
+
     const [message, setMessage] = useState('');
     const [isComposing, setIsComposing] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
@@ -103,14 +105,15 @@ export default function Draft() {
     const [draftedPlayersLoading, setDraftedPlayersLoading] = useState(false); // 드래프트된 선수 로딩 상태
     const [draftedPlayersError, setDraftedPlayersError] = useState(null); // 드래프트된 선수 에러 상태
 
+   
     // 3. 선수 선택 알림 메시지 상태 추가
     const [playerSelectMessage, setPlayerSelectMessage] = useState('');
-    const [showPlayerSelectMessage, setShowPlayerSelectMessage] = useState(
-        false);
-
+    const [showPlayerSelectMessage, setShowPlayerSelectMessage] = useState(false);
+    
     // 2. 스네이크 드래프트 관련 상태 추가
     const [currentRound, setCurrentRound] = useState(1); // 현재 라운드
     const [isReverseRound, setIsReverseRound] = useState(false); // 역순 라운드 여부
+    
 
     const chatBoxRef = useRef(null);
     const navigate = useNavigate();
@@ -264,6 +267,7 @@ export default function Draft() {
                     return false;
                 }
 
+
                 // Ctrl+R (새로고침) 방지
                 if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
                     e.preventDefault();
@@ -271,6 +275,39 @@ export default function Draft() {
                     return false;
                 }
             };
+
+    // 2. 스네이크 드래프트 순서 계산 함수 (수정됨)
+    const getSnakeDraftTurnIndex = (totalSelections, participantCount) => {
+        // totalSelections는 이미 선택된 선수의 수이므로, 다음 턴을 계산할 때는 그대로 사용
+        const round = Math.floor(totalSelections / participantCount) + 1;
+        const positionInRound = totalSelections % participantCount;
+        
+        console.log(`Snake draft calculation: totalSelections=${totalSelections}, participantCount=${participantCount}, round=${round}, positionInRound=${positionInRound}`);
+        
+        let turnIndex;
+        // 홀수 라운드(1, 3, 5...)는 정순 (0, 1, 2, 3)
+        if (round % 2 === 1) {
+            turnIndex = positionInRound;
+        } else {
+            // 짝수 라운드(2, 4, 6...)는 역순 (3, 2, 1, 0)
+            turnIndex = participantCount - 1 - positionInRound;
+        }
+        
+        console.log(`Snake draft result: turnIndex=${turnIndex}`);
+        return turnIndex;
+    };
+
+    // 현재 사용자의 차례인지 확인하는 함수
+    const isMyTurn = () => {
+        if (!draftStarted || draftCompleted || participants.length === 0) return false;
+        
+        const currentParticipant = participants[currentTurnIndex];
+        if (!currentParticipant) return false;
+        
+        // Bot이 아니고 userFlag가 true인 경우 사용자의 차례
+        return !isBot(currentParticipant) && currentParticipant.userFlag === true;
+    };
+
 
             // beforeunload 이벤트로 창 닫기/새로고침 시도 감지
             const handleBeforeUnload = (e) => {
@@ -430,8 +467,49 @@ export default function Draft() {
                 }
             };
 
+
             fetchDraftedPlayers();
         }, [draftId]);
+
+    // 4. 드래프트 완료 후 채팅방으로 리다이렉트 하는 함수
+    const handleDraftCompletion = async () => {
+        try {
+            const accessToken = localStorage.getItem("accessToken");
+            
+            const params = new URLSearchParams({ draftId: draftId });
+            
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/chat-rooms/getChatroomId?${params}`, {
+                method: "GET",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${accessToken}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const chatRoomData = await response.json();
+            
+            // roomId를 이용해서 채팅방으로 리다이렉트
+            navigate(`/chatroom/${chatRoomData.roomId}`);
+            
+        } catch (err) {
+            console.error("채팅방 정보를 가져오는데 실패했습니다:", err);
+            // 실패 시 기본 메시지 표시
+            alert('드래프트가 완료되었습니다.');
+        }
+    };
+
+    // 선택 가능한 선수 목록 가져오기
+    const getSelectablePlayers = () => {
+        return players.filter(player => 
+            isPlayerSelectable(player.status) && 
+            !selectedPlayerIds.includes(player.id)
+        );
+    };
+
 
         // 참가자 카드 클릭 핸들러
         const handleParticipantCardClick = (participantId) => {
@@ -458,7 +536,50 @@ export default function Draft() {
                     const response = await axiosInstance.get(
                         `/api/draft/${draftId}/participants`);
 
+
                     const participantData = response.data;
+
+    // 2. 다음 턴으로 이동 (스네이크 드래프트 적용) (수정됨)
+    const moveToNextTurn = () => {
+        if (draftCompleted) return;
+        
+        console.log('Moving to next turn...');
+        
+        // 타이머 일시정지 해제
+        setIsTimerPaused(false);
+        
+        // 타이머들 정리
+        if (botAutoSelectTimer) {
+            clearTimeout(botAutoSelectTimer);
+            setBotAutoSelectTimer(null);
+        }
+        if (retryTimeoutRef.current) {
+            clearTimeout(retryTimeoutRef.current);
+            retryTimeoutRef.current = null;
+        }
+        if (turnTimer) {
+            clearInterval(turnTimer);
+            setTurnTimer(null);
+        }
+        
+        // 현재 상태의 participantPickCounts를 사용하여 총 선택 수 계산
+        setParticipantPickCounts(currentCounts => {
+            const totalSelections = Object.values(currentCounts).reduce((sum, count) => sum + count, 0);
+            const nextTurnIndex = getSnakeDraftTurnIndex(totalSelections, participants.length);
+            
+            // 현재 라운드 계산 업데이트
+            const newRound = Math.floor(totalSelections / participants.length) + 1;
+            setCurrentRound(newRound);
+            setIsReverseRound(newRound % 2 === 0);
+            
+            setCurrentTurnIndex(nextTurnIndex);
+            setDraftTime(60); // 새로운 턴 시작시 60초로 리셋
+            console.log(`Turn moved to ${nextTurnIndex} using snake draft (round: ${newRound}, totalSelections: ${totalSelections})`);
+            
+            return currentCounts; // 카운트는 변경하지 않음
+        });
+    };
+
 
                     // participantUserNumber로 정렬
                     const sortedParticipants = participantData.sort(
@@ -466,7 +587,15 @@ export default function Draft() {
                             - b.participantUserNumber
                     );
 
+
                     setParticipants(sortedParticipants);
+
+        // 첫 번째 턴 설정 - 드래프트 시작시에만 0으로 설정
+        setCurrentTurnIndex(0);
+        setDraftTime(60); // 1. 45초 -> 60초로 변경
+        
+        console.log(`Initial turn set to: 0 (first participant)`);
+
 
                     // 각 참가자별 선택 카운트 초기화
                     const initialCounts = {};
@@ -507,10 +636,27 @@ export default function Draft() {
             const countdownInterval = setInterval(() => {
                 setCountdown(prev => {
                     if (prev <= 1) {
+
                         // 카운트다운 종료, 드래프트 시작
                         setShowCountdown(false);
                         setDraftStarted(true);
                         clearInterval(countdownInterval);
+
+                        // 시간 만료 처리
+                        handleTimeExpired();
+                        
+                        // 현재 참가자 확인
+                        const currentParticipant = participants[currentTurnIndex];
+                        
+                        // 실제 사용자(data-is-user가 true)인 경우에만 60초로 리셋
+                        if (currentParticipant && 
+                            !isBot(currentParticipant) && 
+                            currentParticipant.userFlag === true) {
+                            return 60; // 1. 45초 -> 60초로 변경
+                        }
+                        
+                        // Bot이거나 data-is-user가 false인 경우 0으로 유지
+
                         return 0;
                     }
                     return prev - 1;
@@ -528,6 +674,7 @@ export default function Draft() {
 
             if (participants.length === 0) return false;
 
+
             // 모든 참가자가 11명씩 선택했는지 확인
             const allCompleted = participants.every(participant => {
                 const pickCount = updatedPickCounts[participant.participantId]
@@ -535,16 +682,178 @@ export default function Draft() {
                 console.log(
                     `Participant ${participant.participantId} (${participant.userName}): ${pickCount}/11`);
                 return pickCount >= 11;
+
+        const newTimer = setInterval(() => {
+            setDraftTime(prev => {
+                // 타이머가 일시정지된 경우 카운트다운 멈춤
+                if (isTimerPaused) {
+                    return prev;
+                }
+                
+                if (prev <= 1) {
+                    handleTimeExpired();
+                    
+                    // 현재 참가자 확인
+                    const currentParticipant = participants[currentTurnIndex];
+                    
+                    // 실제 사용자(data-is-user가 true)인 경우에만 60초로 리셋
+                    if (currentParticipant && 
+                        !isBot(currentParticipant) && 
+                        currentParticipant.userFlag === true) {
+                        return 60; // 1. 45초 -> 60초로 변경
+                    }
+                    
+                    // Bot이거나 data-is-user가 false인 경우 0으로 유지
+                    return 0;
+                }
+                return prev - 1;
+
             });
 
             console.log('All participants completed:', allCompleted);
             return allCompleted;
         };
 
+
         // 4. 드래프트 완료 후 채팅방으로 리다이렉트 하는 함수
         const handleDraftCompletion = async () => {
             try {
                 const accessToken = localStorage.getItem("accessToken");
+
+    // WebSocket 연결 설정 (일부 수정됨)
+    useEffect(() => {
+        const connectWebSocket = () => {
+            const token = localStorage.getItem("accessToken");
+            if (!token) {
+                console.error("WebSocket 연결 실패: 토큰이 없음");
+                return;
+            }
+            
+            const socket = new SockJS(`${import.meta.env.VITE_API_BASE_URL}/ws-draft?token=Bearer ${encodeURIComponent(token)}`);
+            const stompClient = new Client({
+                webSocketFactory: () => socket,
+                debug: (str) => {
+                    console.log('STOMP Debug: ', str);
+                },
+                onConnect: (frame) => {
+                    console.log('Connected: ' + frame);
+                    console.log(`topic/draft is  ${draftId}` );
+                    
+                    // 드래프트 토픽 구독
+                    stompClient.subscribe(`/topic/draft.${draftId}`, (message) => {
+                        const draftResponse = JSON.parse(message.body);
+                        console.log('Received draft message:', draftResponse);
+                        
+                        setIsSelectingPlayer(false); // 선수 선택 완료
+                        
+                        // alreadySelected에 따른 처리
+                        if (draftResponse.alreadySelected) {
+                            console.log('Player already selected, retrying...');
+                            
+                            const currentParticipant = participants[currentTurnIndex];
+                            
+                            // Bot인 경우 다시 시도 (Bot 자동 선택 제거)
+                            if (currentParticipant && isBot(currentParticipant)) {
+                                console.log('Bot retrying selection - but auto selection removed, waiting for WebSocket...');
+                                // Bot 자동 선택 로직 제거 - WebSocket 응답만 기다림
+                            } else {
+                                // 실제 사용자인 경우 알림만 표시하고 타이머 재시작
+                                alert('이미 선택 된 선수입니다. 다시 선택해 주시기 바랍니다.');
+                                
+                                // data-is-user가 false인 다른 사용자의 경우 타이머를 60초로 재시작
+                                if (currentParticipant && !isBot(currentParticipant) && currentParticipant.userFlag !== true) {
+                                    setDraftTime(60); // 1. 45초 -> 60초로 변경
+                                }
+                            }
+                        } else {
+                            console.log('Player selection successful');
+                            
+                            // 3. 선수 선택 성공 알림 메시지 표시
+                            const playerName = draftResponse.playerKrName && draftResponse.playerKrName.trim() !== '' 
+                                ? draftResponse.playerKrName 
+                                : draftResponse.playerWebName;
+                            const userName = draftResponse.userName || '참가자';
+                            
+                            setPlayerSelectMessage(`${userName}님께서 ${playerName}를 선택하셨습니다.`);
+                            setShowPlayerSelectMessage(true);
+                            
+                            // 1초 후 메시지 숨기기
+                            setTimeout(() => {
+                                setShowPlayerSelectMessage(false);
+                            }, 1000);
+                            
+                            // 성공적으로 선택된 경우 선수 ID 추가
+                            if (draftResponse.playerId) {
+                                setSelectedPlayerIds(prev => [...prev, draftResponse.playerId]);
+                                
+                                // 드래프트된 선수 리스트에도 추가
+                                setDraftedPlayers(prev => [...prev, draftResponse]);
+                            }
+                            
+                            // 현재 참가자의 선택 카운트 증가
+                            const currentParticipant = participants[currentTurnIndex];
+                            if (currentParticipant) {
+                                setParticipantPickCounts(prev => {
+                                    const updatedCounts = {
+                                        ...prev,
+                                        [currentParticipant.participantId]: (prev[currentParticipant.participantId] || 0) + 1
+                                    };
+                                    
+                                    console.log('Updated pick counts:', updatedCounts);
+                                    
+                                    // 드래프트 완료 체크
+                                    const isCompleted = checkDraftCompletion(updatedCounts);
+                                    if (isCompleted) {
+                                        console.log('Draft completed! Setting draftCompleted to true');
+                                        setTimeout(() => {
+                                            setDraftCompleted(true);
+                                            if (turnTimer) {
+                                                clearInterval(turnTimer);
+                                                setTurnTimer(null);
+                                            }
+                                            // 4. 드래프트 완료 후 채팅방으로 리다이렉트
+                                            handleDraftCompletion();
+                                        }, 1000);
+                                        return updatedCounts;
+                                    }
+                                    
+                                    return updatedCounts;
+                                });
+                                
+                                // 사용자인 경우 myPlayerCount 증가
+                                if (!isBot(currentParticipant)) {
+                                    setMyPlayerCount(prev => prev + 1);
+                                }
+                            }
+                            
+                            // 드래프트가 완료되지 않은 경우에만 다음 턴으로 이동
+                            setTimeout(() => {
+                                setParticipantPickCounts(currentCounts => {
+                                    const isCompleted = checkDraftCompletion(currentCounts);
+                                    if (!isCompleted) {
+                                        moveToNextTurn();
+                                    }
+                                    return currentCounts;
+                                });
+                            }, 1500);
+                        }
+                    });
+                },
+                onStompError: (frame) => {
+                    console.error('Broker reported error: ' + frame.headers['message']);
+                    console.error('Additional details: ' + frame.body);
+                    setIsSelectingPlayer(false);
+                },
+                onWebSocketError: (error) => {
+                    console.error('WebSocket error: ', error);
+                    setIsSelectingPlayer(false);
+                },
+                onDisconnect: () => {
+                    console.log('Disconnected');
+                    setIsSelectingPlayer(false);
+                }
+            });
+
 
                 const params = new URLSearchParams({draftId: draftId});
 
@@ -1655,6 +1964,7 @@ export default function Draft() {
                             <h2>드래프트가 완료되었습니다.</h2>
                         </div>
                     </div>
+
                 )}
 
                 {/* 경고 메시지 오버레이 */}
@@ -1685,6 +1995,9 @@ export default function Draft() {
                         <div className="timer">{formatTimerDisplay(
                             draftTime)}</div>
                         <span>
+
+            
+
                         {currentTurnParticipant && (
                             `턴: ${!isBot(currentTurnParticipant)
                             && currentTurnParticipant.userName
