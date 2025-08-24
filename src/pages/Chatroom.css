@@ -65,8 +65,12 @@ body {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .exit-btn {
@@ -350,7 +354,7 @@ body {
 .formation-field {
   background: linear-gradient(180deg, #4CAF50 0%, #45a049 100%);
   border-radius: 10px;
-  padding: 2rem 1rem;
+  padding: 1rem;
   height: calc(100% - 3rem);
   position: relative;
   overflow-y: auto;
@@ -363,9 +367,8 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background:
-      linear-gradient(0deg, rgba(255,255,255,0.3) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,0.3) 1px, transparent 1px);
+  background: linear-gradient(0deg, rgba(255, 255, 255, 0.3) 1px, transparent 1px),
+  linear-gradient(90deg, rgba(255, 255, 255, 0.3) 1px, transparent 1px);
   background-size: 50px 50px;
 }
 
@@ -388,13 +391,29 @@ body {
 }
 
 .player-card {
+  position: relative;
   background: rgba(255, 255, 255, 0.95);
-  border-radius: 8px;
-  padding: 0.5rem;
+  border-radius: 10px;
+  padding: 0.8rem;
   text-align: center;
-  min-width: 80px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  min-width: 100px;
+  max-width: 120px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.15);
   transition: transform 0.2s ease;
+}
+
+.player-points-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #e8f5e9; /* 연한 초록 배경 */
+  border: 1px solid #c8e6c9; /* 경계선 */
+  color: #1b5e20;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
 }
 
 .player-card:hover {
@@ -402,30 +421,46 @@ body {
 }
 
 .player-photo-small {
-  width: 40px;
-  height: 40px;
+  width: 50px;                /* 좀 더 크게 */
+  height: 50px;
   border-radius: 50%;
-  background: linear-gradient(45deg, #667eea, #764ba2);
-  margin: 0 auto 0.3rem;
+  overflow: hidden;           /* ★ 원형 크롭 */
+  background: linear-gradient(45deg, #37474f, #546e7a); /* 자연스러운 회색 그라데이션 */
+  margin: 0 auto 0.5rem;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.player-photo-small img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .player-name-small {
-  font-size: 0.7rem;
+  font-size: 0.8rem;
   font-weight: bold;
   color: #333;
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-bottom: 0.3rem;
 }
 
 .player-position-badge {
   background: linear-gradient(45deg, #ff6b6b, #ff8e8e);
   color: white;
-  font-size: 0.6rem;
-  padding: 0.1rem 0.3rem;
+  font-size: 0.7rem;
+  padding: 0.2rem 0.4rem;
   border-radius: 8px;
   margin-top: 0.2rem;
+  font-weight: 600;
 }
 
 /* ========== 오른쪽 섹션 (채팅) ========== */
@@ -731,8 +766,12 @@ body {
 }
 
 @keyframes fadeInOut {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 1; }
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .chat-end-message {
@@ -806,9 +845,13 @@ body {
     padding: 0.3rem;
   }
 
-  .player-photo-small {
-    width: 30px;
-    height: 30px;
+
+  .player-photo-small img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;          /* ★ 원형에 꽉 차게 */
+    object-position: center top;
+    display: block;
   }
 
   .player-name-small {
