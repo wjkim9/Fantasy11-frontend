@@ -100,29 +100,61 @@ export default function Chatroom() {
   // 현재 사용자 정보 가져오기
   const fetchCurrentUser = async () => {
     try {
-      // /api/users/me가 404면 다른 엔드포인트 시도
+      console.log('현재 사용자 정보 요청 시작');
       const response = await axiosInstance.get('/api/user/me');
+      console.log('현재 사용자 정보 응답:', response.data);
       setCurrentUser(response.data);
     } catch (error) {
       console.error('사용자 정보 로드 실패:', error);
-      // 임시 사용자 정보 설정
-      setCurrentUser({
-        id: localStorage.getItem('userId') || 'test-user',
-        email: localStorage.getItem('userEmail') || 'test@gmail.com'
-      });
+      
+      // localStorage에서 사용자 정보 확인
+      const storedUserId = localStorage.getItem('userId');
+      const storedUserEmail = localStorage.getItem('userEmail'); 
+      console.log('저장된 사용자 정보:', { id: storedUserId, email: storedUserEmail });
+      
+      if (storedUserId && storedUserEmail) {
+        setCurrentUser({
+          id: storedUserId,
+          email: storedUserEmail
+        });
+      } else {
+        // 토큰에서 사용자 정보 추출 시도
+        const token = localStorage.getItem('accessToken');
+        if (token) {
+          try {
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            console.log('토큰 페이로드:', payload);
+            setCurrentUser({
+              id: payload.sub || payload.userId || 'unknown',
+              email: payload.email || 'unknown@email.com'
+            });
+          } catch (tokenError) {
+            console.error('토큰 파싱 실패:', tokenError);
+            setCurrentUser({
+              id: 'test-user',
+              email: 'test@gmail.com'
+            });
+          }
+        }
+      }
     }
   };
 
   // 스코어보드 정보 가져오기
   const fetchScoreboard = async () => {
     try {
+      console.log('스코어보드 요청 시작:', `/api/chat-rooms/${roomId}/scoreboard`);
       const response = await axiosInstance.get(
           `/api/chat-rooms/${roomId}/scoreboard`);
+      console.log('스코어보드 응답:', response.data);
       setScoreboard(response.data);
 
-      // 첫 번째 참가자를 기본 선택
+      // 첫 번째 참가자를 기본 선택하고 로스터 로드
       if (response.data.length > 0 && !selectedParticipantId) {
-        setSelectedParticipantId(response.data[0].participantId);
+        const firstParticipant = response.data[0].participantId;
+        console.log('첫 번째 참가자 선택:', firstParticipant);
+        setSelectedParticipantId(firstParticipant);
+        fetchRoster(firstParticipant);
       }
     } catch (error) {
       console.error('스코어보드 로드 실패:', error);
@@ -139,6 +171,8 @@ export default function Chatroom() {
       const response = await axiosInstance.get(
           `/api/chat-rooms/${roomId}/participants/${participantId}/roster`
       );
+      console.log('로스터 데이터:', response.data);
+      console.log('선수 사진 정보:', response.data.players?.map(p => ({name: p.name, pic: p.pic})));
       setCurrentRoster(response.data);
     } catch (error) {
       console.error('로스터 로드 실패:', error);
@@ -223,8 +257,12 @@ export default function Chatroom() {
 
   // 시간 포맷
   const normalizeIsoToMs = (ts) => {
-    if (!ts) return null;
-    if (ts instanceof Date || typeof ts === 'number') return ts;
+    if (!ts) {
+      return null;
+    }
+    if (ts instanceof Date || typeof ts === 'number') {
+      return ts;
+    }
     if (typeof ts === 'string') {
       // 예: 2025-08-22T08:31:51.119840414Z → 2025-08-22T08:31:51.119Z
       return ts.replace(/(\.\d{3})\d+(Z|[+\-]\d{2}:\d{2})$/, '$1$2');
@@ -235,7 +273,9 @@ export default function Chatroom() {
   const formatTime = (timestamp) => {
     const safe = normalizeIsoToMs(timestamp);
     const date = safe ? new Date(safe) : new Date();
-    if (isNaN(date)) return '';
+    if (isNaN(date)) {
+      return '';
+    }
     try {
       return date.toLocaleTimeString('ko-KR', {
         hour: 'numeric',
@@ -286,10 +326,10 @@ export default function Chatroom() {
     setLoading(true);
 
     try {
-      // 최신 메시지부터 20개 가져오기 (백엔드에서 이미 처리됨)
+      // 최신 메시지부터 30개 가져오기 (백엔드에서 이미 처리됨)
       const response = await axiosInstance.get(
           `/api/chat-rooms/${actualRoomId}/messages`, {
-            params: {limit: 20}
+            params: {limit: 30}
           });
 
       const {items, nextCursor: cursor, hasMore: more} = response.data;
@@ -326,7 +366,7 @@ export default function Chatroom() {
           `/api/chat-rooms/${roomId}/messages/before`, {
             params: {
               cursor: nextCursor,
-              limit: 20  // 20개씩 로드
+              limit: 30  // 30개씩 로드
             }
           });
 
@@ -391,14 +431,16 @@ export default function Chatroom() {
 
                 // 사용자 이름 결정 (formatMessage와 동일한 로직 사용)
                 let userName = '시스템';
-                if (newMessage.type === 'ALERT' || newMessage.type === 'SYSTEM') {
+                if (newMessage.type === 'ALERT' || newMessage.type
+                    === 'SYSTEM') {
                   userName = '⚽ 알림';
                 } else if (newMessage.userId) {
                   if (currentUser && newMessage.userId === currentUser.id) {
                     userName = currentUser.email;
                   } else {
                     // 스코어보드에서 사용자 정보 찾기
-                    const user = scoreboard.find(s => s.userId === newMessage.userId);
+                    const user = scoreboard.find(
+                        s => s.userId === newMessage.userId);
                     if (user && user.email) {
                       userName = user.email;
                     } else {
@@ -433,6 +475,9 @@ export default function Chatroom() {
                 // 알림 메시지일 경우 스코어보드 새로고침 및 최근 알림에 추가
                 if (newMessage.type === 'ALERT') {
                   fetchScoreboard();
+                  if (selectedParticipantId) {
+                    fetchRoster(selectedParticipantId);
+                  }
 
                   // 골/어시스트 관련 알림인지 확인
                   const isGoalOrAssist = newMessage.content.includes('골') ||
@@ -678,15 +723,10 @@ export default function Chatroom() {
   // 포메이션 렌더링 헬퍼
   const renderFormation = () => {
     if (!currentRoster) {
-      return null;
+      return <div style={{padding: '20px', textAlign: 'center'}}>로스터 데이터를 불러오는 중...</div>;
     }
 
-    const positions = {
-      GK: [],
-      DF: [],
-      MID: [],
-      FWD: []
-    };
+    const positions = {GK: [], DF: [], MID: [], FWD: []};
 
     currentRoster.players.forEach(player => {
       const pos = player.position === 'FW' ? 'FWD' : player.position;
@@ -695,22 +735,65 @@ export default function Chatroom() {
       }
     });
 
+    const nameOf = (p) => {
+      // 백엔드에서 name(한글 우선)을 내려주면 이 한 줄로 끝
+      if (p.name) {
+        return p.name;
+      }
+      // 혹시 백엔드 반영 전이면 프론트에서 폴백
+      if (p.krName && p.krName.trim()) {
+        return p.krName;
+      }
+      return p.webName || '';
+    };
+
     return (
         <>
-          {Object.entries(positions).map(([position, players]) => (
-              players.length > 0 && (
-                  <div key={position} className="formation-line">
-                    {players.map((player) => (
-                        <div key={player.playerId} className="player-card">
-                          <div className="player-photo-small"></div>
-                          <div className="player-name-small">{player.name}</div>
-                          <div
-                              className="player-position-badge">{position}</div>
-                        </div>
-                    ))}
-                  </div>
-              )
-          ))}
+          {Object.entries(positions).map(([position, players]) =>
+                  players.length > 0 && (
+                      <div key={position} className="formation-line">
+                        {players.map((player) => (
+                            <div key={player.playerId} className="player-card">
+                              <div className="player-photo-small">
+                                {player.pic ? (
+                                    <img
+                                        src={player.pic}
+                                        alt={`${nameOf(player)} 사진`}
+                                        loading="lazy"
+                                        onError={(e) => {
+                                          console.log('이미지 로드 실패:', player.pic);
+                                          // 실패하면 이미지만 숨기고(그럼 그라데이션 배경이 보임)
+                                          e.currentTarget.style.display = 'none';
+                                        }}
+                                        onLoad={() => {
+                                          console.log('이미지 로드 성공:', player.pic);
+                                        }}
+                                    />
+                                ) : (
+                                    <div style={{
+                                      width: '100%',
+                                      height: '100%',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      fontSize: '10px',
+                                      color: 'white',
+                                      textAlign: 'center'
+                                    }}>
+                                      NO IMG
+                                    </div>
+                                )}
+                              </div>
+                              <div className="player-name-small">{nameOf(player)}</div>
+                              <div className="player-position-badge">{position}</div>
+                              <div className="player-points-badge">
+                                +{Number.isFinite(player.points) ? player.points : 0}
+                              </div>
+                            </div>
+                        ))}
+                      </div>
+                  )
+          )}
         </>
     );
   };
