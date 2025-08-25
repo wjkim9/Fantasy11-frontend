@@ -1772,7 +1772,7 @@ export default function Draft() {
                 </button> */}
                 <div className="draft-info">
                     <span>라운드 {currentRound}/11</span>
-                    <div className="timer">{formatTime(draftTime)}</div>
+                    <div className="timer">{formatTimerDisplay(draftTime)}</div>
                     <span>
                         {currentTurnParticipant && (
                             `턴: ${!isBot(currentTurnParticipant) && currentTurnParticipant.userName && currentTurnParticipant.userName.trim() !== "" 
@@ -1845,7 +1845,7 @@ export default function Draft() {
                             <button
                                 type="button"
                                 className="search-btn"
-                                onClick={handleSearch}
+                                onClick={handlePlayerSearch}
                             >
                                 검색
                             </button>
@@ -1853,7 +1853,7 @@ export default function Draft() {
                     </div>
                     <div className="player-list">
                         {/* 로딩 중일 때 */}
-                        {loading && (
+                        {playersLoading && (
                             <div className="loading-message">선수 데이터를 불러오는 중...</div>
                         )}
                         
@@ -1865,7 +1865,7 @@ export default function Draft() {
                         )}
                         
                         {/* 선수 목록 */}
-                        {!loading && !error && players.map((player, idx) => (
+                        {!playersLoading && !error && players.map((player, idx) => (
                             <div key={player.id || idx} className="player-item">
                                 <div className="player-position">{player.position}</div>
                                 <div className="player-photo">
