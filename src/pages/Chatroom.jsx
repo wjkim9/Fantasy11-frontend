@@ -567,14 +567,12 @@ export default function Chatroom() {
     };
 
     try {
-      stompClientRef.current.send( `/app/chat/${actualRoomId}/send`,{},
+      stompClientRef.current.send(
+          '/app/chat/${actualRoomId}/send'
+          , {},
           JSON.stringify(messageData)
       );
-      //
-      // stompClientRef.current.publish({
-      //   destination: `/app/chat/${actualRoomId}/send`,
-      //   body: JSON.stringify(messageData)
-      // });
+
 
       console.log('메세지 전송 완료 ',message.toString())
       setMessage('');
