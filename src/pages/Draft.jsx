@@ -111,7 +111,10 @@ export default function Draft() {
     // 2. 스네이크 드래프트 관련 상태 추가
     const [currentRound, setCurrentRound] = useState(1); // 현재 라운드
     const [isReverseRound, setIsReverseRound] = useState(false); // 역순 라운드 여부
-
+    
+    // 새로 추가된 상태들 - 턴 시작 요청 관련
+    const [turnRequestSent, setTurnRequestSent] = useState(false); // 턴 시작 요청이 보내졌는지 여부
+    
     const chatBoxRef = useRef(null);
     const navigate = useNavigate();
     const {draftId} = useParams(); // URL에서 draftId 파라미터 가져오기
@@ -300,24 +303,85 @@ export default function Draft() {
 
     // 2. 스네이크 드래프트 순서 계산 함수 (수정됨)
     const getSnakeDraftTurnIndex = (totalSelections, participantCount) => {
-        // totalSelections는 이미 선택된 선수의 수이므로, 다음 턴을 계산할 때는 그대로 사용
-        const round = Math.floor(totalSelections / participantCount) + 1;
+        // 현재 라운드 계산 (0부터 시작)
+        const currentRound = Math.floor(totalSelections / participantCount);
+        // 현재 라운드 내에서의 위치 (0부터 시작)
         const positionInRound = totalSelections % participantCount;
-
-        console.log(
-            `Snake draft calculation: totalSelections=${totalSelections}, participantCount=${participantCount}, round=${round}, positionInRound=${positionInRound}`);
-
-        let turnIndex;
-        // 홀수 라운드(1, 3, 5...)는 정순 (0, 1, 2, 3)
-        if (round % 2 === 1) {
-            turnIndex = positionInRound;
+        
+        console.log(`Snake draft calculation: totalSelections=${totalSelections}, participantCount=${participantCount}, currentRound=${currentRound}, positionInRound=${positionInRound}`);
+        
+        let userNumber;
+        // 짝수 라운드(0, 2, 4...)는 정순 (1, 2, 3, 4)
+        // 홀수 라운드(1, 3, 5...)는 역순 (4, 3, 2, 1)
+        if (currentRound % 2 === 0) {
+            // 정순: userNumber 1, 2, 3, 4
+            userNumber = positionInRound + 1;
         } else {
-            // 짝수 라운드(2, 4, 6...)는 역순 (3, 2, 1, 0)
-            turnIndex = participantCount - 1 - positionInRound;
+            // 역순: userNumber 4, 3, 2, 1
+            userNumber = participantCount - positionInRound;
+        }
+        
+        // userNumber에 해당하는 참가자의 인덱스 찾기
+        const turnIndex = participants.findIndex(participant => participant.participantUserNumber === userNumber);
+        
+        console.log(`Snake draft result: userNumber=${userNumber}, turnIndex=${turnIndex}, round=${currentRound + 1}`);
+        return turnIndex;
+    };
+
+    // currentParticipantId를 찾는 함수 (data-participant-user-number가 1인 참가자의 data-participant-id)
+    const getCurrentParticipantId = () => {
+        const firstParticipant = participants.find(participant => participant.participantUserNumber === 1);
+        return firstParticipant ? firstParticipant.participantId : null;
+    };
+
+    // 턴 시작 요청 함수
+    const sendTurnStartRequest = async () => {
+        if (turnRequestSent) return;
+        
+        const currentParticipantId = getCurrentParticipantId();
+        if (!currentParticipantId) {
+            console.error('Cannot find currentParticipantId (participant with userNumber 1)');
+            return;
         }
 
-        console.log(`Snake draft result: turnIndex=${turnIndex}`);
-        return turnIndex;
+        try {
+            setTurnRequestSent(true);
+            
+            console.log('Sending turn start request with currentParticipantId:', currentParticipantId);
+
+            const accessToken = localStorage.getItem("accessToken");
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/draft/${draftId}/turn`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({
+                    currentParticipantId: currentParticipantId,
+                    roundNo: 1
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            console.log('Turn start request sent successfully');
+            
+            // 요청 성공 후 바로 드래프트 시작
+            setDraftStarted(true);
+
+        } catch (err) {
+            console.error("턴 시작 요청 실패:", err);
+            setTurnRequestSent(false);
+            // 실패 시에도 드래프트 시작
+            setDraftStarted(true);
+        }
+    };
+
+    // participantId로 참가자 인덱스를 찾는 함수
+    const findParticipantIndexById = (participantId) => {
+        return participants.findIndex(participant => participant.participantId === participantId);
     };
 
     // 현재 사용자의 차례인지 확인하는 함수
@@ -447,7 +511,7 @@ export default function Draft() {
             player => player.participantId === selectedParticipantId);
     };
 
-    // 참가자 데이터 fetch
+    // 참가자 데이터 fetch (수정됨)
     useEffect(() => {
         const fetchParticipants = async () => {
             try {
@@ -477,17 +541,15 @@ export default function Draft() {
 
                 setParticipantError(null);
 
-                // 참가자 데이터를 성공적으로 가져오면 카운트다운 시작
-                setShowCountdown(true);
-
                 // 참가자 정보 로그 출력
-                console.log('Participants loaded:',
-                    sortedParticipants.map(p => ({
-                        id: p.participantId,
-                        userFlag: p.userFlag,
-                        userName: p.userName,
-                        isBot: isBot(p)
-                    })));
+
+                console.log('Participants loaded:', sortedParticipants.map(p => ({
+                    id: p.participantId,
+                    userFlag: p.userFlag,
+                    userName: p.userName,
+                    userNumber: p.participantUserNumber,
+                    isBot: isBot(p)
+                })));
 
             } catch (err) {
                 console.error("참가자 데이터를 가져오는데 실패했습니다:", err);
@@ -500,25 +562,13 @@ export default function Draft() {
         fetchParticipants();
     }, [draftId]);
 
-    // 드래프트 시작 카운트다운
+    // 참가자 데이터가 완전히 로드된 후 턴 시작 요청 전송
     useEffect(() => {
-        if (!showCountdown || draftStarted) return;
-
-        const countdownInterval = setInterval(() => {
-            setCountdown(prev => {
-                if (prev <= 1) {
-                    // 카운트다운 종료, 드래프트 시작
-                    setShowCountdown(false);
-                    setDraftStarted(true);
-                    clearInterval(countdownInterval);
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-
-        return () => clearInterval(countdownInterval);
-    }, [showCountdown, draftStarted]);
+        if (!participantLoading && participants.length > 0 && !turnRequestSent) {
+            console.log('Participants fully loaded, sending turn start request');
+            sendTurnStartRequest();
+        }
+    }, [participantLoading, participants, turnRequestSent]);
 
     // 드래프트 완료 체크 함수
     const checkDraftCompletion = (updatedPickCounts) => {
@@ -613,15 +663,17 @@ export default function Draft() {
         if (!currentParticipant || isBot(currentParticipant)) return;
 
         // 현재 참가자가 실제 사용자(data-is-user가 true)가 아닌 경우 아무것도 하지 않음
+        /* 서버에서 체크할 거라 주석처리
         if (currentParticipant.userFlag !== true) {
             console.log(
                 `Not a real user (userFlag: ${currentParticipant.userFlag}), waiting for WebSocket response...`);
             return; // 대기 상태 유지, 다음 턴으로 이동하지 않음, 자동 선택하지 않음
         }
 
-        console.log(
-            `User ${currentParticipant.participantId} time expired, sending random select request...`);
+        */
 
+        console.log(`User ${currentParticipant.participantId} time expired, sending random select request...`);
+        
         // 실제 사용자인 경우 랜덤 선택 WebSocket 통신 전송
         if (!stompClientRef.current || !stompClientRef.current.connected) {
             console.error('WebSocket not connected for random select');
@@ -630,7 +682,8 @@ export default function Draft() {
 
         // 랜덤 선택 요청 데이터 구성
         const randomSelectData = {
-            draftId: draftId
+            draftId: draftId,
+            roundNo: currentRound
         };
 
         console.log('Sending random player selection request:',
@@ -687,14 +740,16 @@ export default function Draft() {
 
         // 현재 상태의 participantPickCounts를 사용하여 총 선택 수 계산
         setParticipantPickCounts(currentCounts => {
-            const totalSelections = Object.values(currentCounts).reduce(
-                (sum, count) => sum + count, 0);
-            const nextTurnIndex = getSnakeDraftTurnIndex(totalSelections,
-                participants.length);
 
-            // 현재 라운드 계산 업데이트
-            const newRound = Math.floor(
-                totalSelections / participants.length) + 1;
+            const totalSelections = Object.values(currentCounts).reduce((sum, count) => sum + count, 0);
+            console.log(`Current total selections: ${totalSelections}`);
+            
+            // 다음 턴 인덱스 계산
+            const nextTurnIndex = getSnakeDraftTurnIndex(totalSelections, participants.length);
+            
+            // 현재 라운드 계산 업데이트 (1부터 시작하는 라운드 번호)
+            const newRound = Math.floor(totalSelections / participants.length) + 1;
+
             setCurrentRound(newRound);
             setIsReverseRound(newRound % 2 === 0);
 
@@ -827,7 +882,7 @@ export default function Draft() {
         };
     }, [currentTurnIndex, draftStarted, draftCompleted]);
 
-    // WebSocket 연결 설정 (일부 수정됨)
+    // WebSocket 연결 설정 (수정됨)
     useEffect(() => {
         const connectWebSocket = () => {
             const token = localStorage.getItem("accessToken");
@@ -849,109 +904,128 @@ export default function Draft() {
                     console.log(`topic/draft is  ${draftId}`);
 
                     // 드래프트 토픽 구독
-                    stompClient.subscribe(`/topic/draft.${draftId}`,
-                        (message) => {
-                            const draftResponse = JSON.parse(message.body);
-                            console.log('Received draft message:',
-                                draftResponse);
-
-                            setIsSelectingPlayer(false); // 선수 선택 완료
-
-                            // alreadySelected에 따른 처리
-                            if (draftResponse.alreadySelected) {
-                                console.log(
-                                    'Player already selected, retrying...');
-
-                                const currentParticipant = participants[currentTurnIndex];
-
-                                // Bot인 경우 다시 시도 (Bot 자동 선택 제거)
-                                if (currentParticipant && isBot(
-                                    currentParticipant)) {
-                                    console.log(
-                                        'Bot retrying selection - but auto selection removed, waiting for WebSocket...');
-                                    // Bot 자동 선택 로직 제거 - WebSocket 응답만 기다림
-                                } else {
-                                    // 실제 사용자인 경우 알림만 표시하고 타이머 재시작
-                                    alert(
-                                        '이미 선택 된 선수입니다. 다시 선택해 주시기 바랍니다.');
-
-                                    // data-is-user가 false인 다른 사용자의 경우 타이머를 60초로 재시작
-                                    if (currentParticipant && !isBot(
-                                            currentParticipant)
-                                        && currentParticipant.userFlag
-                                        !== true) {
-                                        setDraftTime(60); // 1. 45초 -> 60초로 변경
-                                    }
+                    stompClient.subscribe(`/topic/draft.${draftId}`, (message) => {
+                        const draftResponse = JSON.parse(message.body);
+                        console.log('Received draft message:', draftResponse);
+                        
+                        setIsSelectingPlayer(false); // 선수 선택 완료
+                        
+                        // draftCnt 체크 - 44 이상이면 드래프트 완료
+                        if (draftResponse.draftCnt >= 44) {
+                            console.log('Draft completed! draftCnt:', draftResponse.draftCnt);
+                            setDraftCompleted(true);
+                            if (turnTimer) {
+                                clearInterval(turnTimer);
+                                setTurnTimer(null);
+                            }
+                            handleDraftCompletion();
+                            return;
+                        }
+                        
+                        // draftCnt < 44인 경우 (아직 드래프트 중) nextUserNumber로 턴 변경
+                        if (draftResponse.draftCnt < 44 && draftResponse.nextUserNumber) {
+                            console.log('Draft continuing, changing turn to nextUserNumber:', draftResponse.nextUserNumber);
+                            const nextTurnIndex = participants.findIndex(
+                                participant => participant.participantUserNumber === draftResponse.nextUserNumber
+                            );
+                            if (nextTurnIndex !== -1) {
+                                setCurrentTurnIndex(nextTurnIndex);
+                                setDraftTime(60); // 60초로 리셋
+                                setIsTimerPaused(false);
+                                console.log(`Turn moved to index ${nextTurnIndex} (userNumber: ${draftResponse.nextUserNumber})`);
+                            }
+                        }
+                        
+                        // isCurrentParticipant나 currentParticipant가 false인 경우 처리 (추가됨)
+                        const isCurrentParticipant = draftResponse.isCurrentParticipant !== undefined 
+                            ? draftResponse.isCurrentParticipant 
+                            : draftResponse.currentParticipant;
+                        
+                        if (isCurrentParticipant === false) {
+                            console.log('Not current participant turn');
+                            
+                            // participantId와 data-participant-id가 일치하고 data-user-flag가 true인 클라이언트에만 메시지 표시
+                            if (draftResponse.participantId) {
+                                // 현재 클라이언트의 참가자 정보 찾기
+                                const currentClientParticipant = participants.find(p => 
+                                    p.participantId === draftResponse.participantId && p.userFlag === true
+                                );
+                                
+                                if (currentClientParticipant) {
+                                    console.log('Showing warning message to participant:', draftResponse.participantId);
+                                    // '현재 다른 참가자의 차례입니다.' 메시지 2초 표시
+                                    setShowWarningMessage(true);
+                                    setTimeout(() => {
+                                        setShowWarningMessage(false);
+                                    }, 2000);
                                 }
+                            }
+                            
+                            return; // 다른 처리는 하지 않고 리턴
+                        }
+                        
+                        // alreadySelected에 따른 처리
+                        if (draftResponse.alreadySelected) {
+                            console.log('Player already selected, retrying...');
+                            
+                            const currentParticipant = participants[currentTurnIndex];
+                            
+                            // Bot인 경우 다시 시도 (Bot 자동 선택 제거)
+                            if (currentParticipant && isBot(currentParticipant)) {
+                                console.log('Bot retrying selection - but auto selection removed, waiting for WebSocket...');
+                                // Bot 자동 선택 로직 제거 - WebSocket 응답만 기다림
                             } else {
-                                console.log('Player selection successful');
-
-                                // 3. 선수 선택 성공 알림 메시지 표시
-                                const playerName = draftResponse.playerKrName
-                                && draftResponse.playerKrName.trim() !== ''
-                                    ? draftResponse.playerKrName
-                                    : draftResponse.playerWebName;
-                                const userName = draftResponse.userName
-                                    || '참가자';
-
-                                setPlayerSelectMessage(
-                                    `${userName}님께서 ${playerName}를 선택하셨습니다.`);
-                                setShowPlayerSelectMessage(true);
-
-                                // 1초 후 메시지 숨기기
-                                setTimeout(() => {
-                                    setShowPlayerSelectMessage(false);
-                                }, 1000);
-
-                                // 성공적으로 선택된 경우 선수 ID 추가
-                                if (draftResponse.playerId) {
-                                    setSelectedPlayerIds(prev => [...prev,
-                                        draftResponse.playerId]);
-
-                                    // 드래프트된 선수 리스트에도 추가
-                                    setDraftedPlayers(
-                                        prev => [...prev, draftResponse]);
+                                // 현재 사용자가 실제 요청을 보낸 경우에만 알림 표시 (userFlag가 true인 경우)
+                                if (currentParticipant && currentParticipant.userFlag === true) {
+                                    alert('이미 선택 된 선수입니다. 다시 선택해 주시기 바랍니다.');
                                 }
-
-                                // 현재 참가자의 선택 카운트 증가
-                                const currentParticipant = participants[currentTurnIndex];
-                                if (currentParticipant) {
-                                    setParticipantPickCounts(prev => {
-                                        const updatedCounts = {
-                                            ...prev,
-                                            [currentParticipant.participantId]: (prev[currentParticipant.participantId]
-                                                || 0) + 1
-                                        };
-
-                                        console.log('Updated pick counts:',
-                                            updatedCounts);
-
-                                        // 드래프트 완료 체크
-                                        const isCompleted = checkDraftCompletion(
-                                            updatedCounts);
-                                        if (isCompleted) {
-                                            console.log(
-                                                'Draft completed! Setting draftCompleted to true');
-                                            setTimeout(() => {
-                                                setDraftCompleted(true);
-                                                if (turnTimer) {
-                                                    clearInterval(
-                                                        turnTimer);
-                                                    setTurnTimer(null);
-                                                }
-                                                // 4. 드래프트 완료 후 채팅방으로 리다이렉트
-                                                handleDraftCompletion();
-                                            }, 1000);
-                                            return updatedCounts;
-                                        }
-
-                                        return updatedCounts;
-                                    });
-
-                                    // 사용자인 경우 myPlayerCount 증가
-                                    if (!isBot(currentParticipant)) {
-                                        setMyPlayerCount(prev => prev + 1);
-                                    }
+                                
+                                // data-is-user가 false인 다른 사용자의 경우 타이머를 60초로 재시작
+                                if (currentParticipant && !isBot(currentParticipant) && currentParticipant.userFlag !== true) {
+                                    setDraftTime(60); // 1. 45초 -> 60초로 변경
+                                }
+                            }
+                        } else {
+                            console.log('Player selection successful');
+                            
+                            // 3. 선수 선택 성공 알림 메시지 표시
+                            const playerName = draftResponse.playerKrName && draftResponse.playerKrName.trim() !== '' 
+                                ? draftResponse.playerKrName 
+                                : draftResponse.playerWebName;
+                            const userName = draftResponse.userName || '참가자';
+                            
+                            setPlayerSelectMessage(`${userName}님께서 ${playerName}를 선택하셨습니다.`);
+                            setShowPlayerSelectMessage(true);
+                            
+                            // 1초 후 메시지 숨기기
+                            setTimeout(() => {
+                                setShowPlayerSelectMessage(false);
+                            }, 1000);
+                            
+                            // 성공적으로 선택된 경우 선수 ID 추가
+                            if (draftResponse.playerId) {
+                                setSelectedPlayerIds(prev => [...prev, draftResponse.playerId]);
+                                
+                                // 드래프트된 선수 리스트에도 추가
+                                setDraftedPlayers(prev => [...prev, draftResponse]);
+                            }
+                            
+                            // 현재 참가자의 선택 카운트 증가
+                            const currentParticipant = participants[currentTurnIndex];
+                            if (currentParticipant) {
+                                setParticipantPickCounts(prev => {
+                                    const updatedCounts = {
+                                        ...prev,
+                                        [currentParticipant.participantId]: (prev[currentParticipant.participantId] || 0) + 1
+                                    };
+                                    
+                                    console.log('Updated pick counts:', updatedCounts);
+                                    return updatedCounts;
+                                });
+                                
+                                // 사용자인 경우 myPlayerCount 증가
+                                if (!isBot(currentParticipant)) {
+                                    setMyPlayerCount(prev => prev + 1);
                                 }
 
                                 // 드래프트가 완료되지 않은 경우에만 다음 턴으로 이동
@@ -967,7 +1041,30 @@ export default function Draft() {
                                         });
                                 }, 1500);
                             }
-                        });
+                            
+                            // nextUserNumber로 다음 턴 이동 (WebSocket 응답 기반)
+                            setTimeout(() => {
+                                // 모든 경우에 60초 타이머 다시 시작
+                                setDraftTime(60);
+                                setIsTimerPaused(false);
+                                
+                                if (draftResponse.nextUserNumber) {
+                                    console.log('Moving turn to nextUserNumber:', draftResponse.nextUserNumber);
+                                    const nextTurnIndex = participants.findIndex(
+                                        participant => participant.participantUserNumber === draftResponse.nextUserNumber
+                                    );
+                                    if (nextTurnIndex !== -1) {
+                                        setCurrentTurnIndex(nextTurnIndex);
+                                        console.log(`Turn moved to index ${nextTurnIndex} (userNumber: ${draftResponse.nextUserNumber})`);
+                                    } else {
+                                        console.error('Cannot find participant with nextUserNumber:', draftResponse.nextUserNumber);
+                                    }
+                                } else {
+                                    console.log('No nextUserNumber in response, keeping current turn');
+                                }
+                            }, 1500);
+                        }
+                    });
                 },
                 onStompError: (frame) => {
                     console.error('Broker reported error: '
@@ -1071,6 +1168,7 @@ export default function Draft() {
         if (!currentParticipant) return;
 
         // 자동 선택이나 Bot 선택이 아닌 경우 사용자의 차례인지 확인
+        /* 현재 서버에서 처리
         if (!isAutoSelect && !isBotSelect) {
             if (!isMyTurn()) {
                 setShowWarningMessage(true);
@@ -1080,6 +1178,7 @@ export default function Draft() {
                 return;
             }
         }
+        */
 
         // 현재 참가자가 Bot이 아닌데 사용자가 선택하려 하는 경우 (기존 로직)
         if (isBot(currentParticipant) && !isAutoSelect && !isBotSelect) {
@@ -1124,7 +1223,8 @@ export default function Draft() {
             teamKrName: player.teamKrName,
             elementTypeId: player.elementTypeId,
             elementTypePluralName: player.elementTypePluralName,
-            elementTypeKrName: player.elementTypeKrName
+            elementTypeKrName: player.elementTypeKrName,
+            roundNo: currentRound
         };
 
         console.log('Sending player selection:', selectPlayerData);
@@ -1629,25 +1729,15 @@ export default function Draft() {
     return (
         <>
             {/* Hidden draftId value */}
-            <div style={{display: 'none'}} data-draft-id={draftId}></div>
-
+            <div style={{ display: 'none' }} data-draft-id={draftId}></div>
+            
             {/* Hidden drafted players data */}
-            <div style={{display: 'none'}} id="drafted-players-data">
+            <div style={{ display: 'none' }} id="drafted-players-data">
                 {draftedPlayers.map((player, idx) => (
-                    <div key={idx}
-                         data-drafted-player={JSON.stringify(player)}></div>
+                    <div key={idx} data-drafted-player={JSON.stringify(player)}></div>
                 ))}
             </div>
-
-            {/* 드래프트 시작 카운트다운 오버레이 */}
-            {showCountdown && (
-                <div className="countdown-overlay">
-                    <div className="countdown-content">
-                        <h2>{countdown}초 후에 드래프트가 시작됩니다.</h2>
-                    </div>
-                </div>
-            )}
-
+            
             {/* 드래프트 완료 오버레이 */}
             {draftCompleted && (
                 <div className="countdown-overlay">
@@ -1656,7 +1746,7 @@ export default function Draft() {
                     </div>
                 </div>
             )}
-
+            
             {/* 경고 메시지 오버레이 */}
             {showWarningMessage && (
                 <div className="warning-overlay">
@@ -1665,7 +1755,7 @@ export default function Draft() {
                     </div>
                 </div>
             )}
-
+            
             {/* 3. 선수 선택 알림 메시지 오버레이 */}
             {showPlayerSelectMessage && (
                 <div className="player-select-overlay">
@@ -1674,7 +1764,7 @@ export default function Draft() {
                     </div>
                 </div>
             )}
-
+            
             <header className="header">
                 <div className="logo">Fantasy11</div>
                 {/* <button className="cancel-btn" onClick={() => navigate('/chatroom')}>
@@ -1682,162 +1772,41 @@ export default function Draft() {
                 </button> */}
                 <div className="draft-info">
                     <span>라운드 {currentRound}/11</span>
-                    <div className="timer">{formatTimerDisplay(
-                        draftTime)}</div>
+                    <div className="timer">{formatTime(draftTime)}</div>
                     <span>
                         {currentTurnParticipant && (
-                            `턴: ${!isBot(currentTurnParticipant)
-                            && currentTurnParticipant.userName
-                            && currentTurnParticipant.userName.trim() !== ""
-                                ? currentTurnParticipant.userName
+                            `턴: ${!isBot(currentTurnParticipant) && currentTurnParticipant.userName && currentTurnParticipant.userName.trim() !== "" 
+                                ? currentTurnParticipant.userName 
                                 : `Bot${currentTurnIndex + 1}`}님`
                         )}
                     </span>
                 </div>
-                <button className="exit-btn" onClick={handleExit}>나가기
-                </button>
+                <button className="exit-btn" onClick={handleExit}>나가기</button>
             </header>
 
             <div className="main-container">
                 {/* 채팅 */}
                 <div className="section chat-section">
-                    <h3 className="section-title">
-                        채팅
-                        {!isConnected && <span
-                            className="connection-status disconnected"> 연결 중...</span>}
-                        {isConnected && <span
-                            className="connection-status connected"> 연결됨</span>}
-                        {loading && <span
-                            className="loading-indicator"> 로딩중...</span>}
-                    </h3>
-
-                    {/* 채팅 검색 영역 */}
-                    <div className="chat-search-container">
-                        <input
-                            type="text"
-                            className="chat-search-input"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    handleChatSearch();
-                                }
-                            }}
-                            placeholder="채팅 메시지 검색..."
-                        />
-                        <button
-                            className="chat-search-btn"
-                            onClick={handleChatSearch}
-                            disabled={isSearching || !searchQuery.trim()}
-                        >
-                            {isSearching ? '검색중...' : '🔍'}
-                        </button>
-                        {showSearchResults && (
-                            <button
-                                className="chat-search-clear"
-                                onClick={clearSearch}
-                                title="검색 결과 지우기"
-                            >
-                                ✕
-                            </button>
-                        )}
-                    </div>
-
+                    <h3 className="section-title">채팅</h3>
                     <div className="chat-messages" ref={chatBoxRef}>
-                        {showSearchResults ? (
-                            /* 검색 결과 표시 */
-                            <>
-                                <div className="search-results-header">
-                                    검색 결과: "{searchQuery}"
-                                    ({searchResults.length}건)
-                                </div>
-                                {searchResults.length > 0 ? (
-                                    searchResults.map((msg) => (
-                                        <div key={msg.id}
-                                             className={`chat-message search-result ${msg.type
-                                             === 'ALERT' ? 'alert-message'
-                                                 : ''}`}>
-                                            <div
-                                                className="chat-user">{msg.user}</div>
-                                            <div
-                                                className="chat-text">{msg.text}</div>
-                                            <div
-                                                className="chat-time">{msg.time}</div>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="no-search-results">
-                                        검색 결과가 없습니다.
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            /* 일반 채팅 메시지 표시 */
-                            <>
-                                {hasMore && (
-                                    <div ref={loadMoreRef}
-                                         className="load-more-trigger">
-                                        {loading && <div
-                                            className="loading-message">이전
-                                            메시지를 불러오는 중...</div>}
-                                    </div>
-                                )}
-                                {!hasMore && chatList.length > 0 && (
-                                    <div className="chat-end-message">채팅의
-                                        시작입니다.</div>
-                                )}
-                                {chatList.map((msg) => (
-                                    <div key={msg.id}
-                                         className={`chat-message ${msg.type
-                                         === 'ALERT' ? 'alert-message'
-                                             : ''}`}>
-                                        <div
-                                            className="chat-user">{msg.user}</div>
-                                        <div className="chat-text">{msg.text
-                                            || msg.message}</div>
-                                        <div
-                                            className="chat-time">{msg.time}</div>
-                                    </div>
-                                ))}
-                            </>
-                        )}
+                        {chatList.map((chat, i) => (
+                            <div key={i} className="chat-message">
+                                <div className="chat-user">{chat.user}</div>
+                                <div className="chat-text">{chat.message}</div>
+                            </div>
+                        ))}
                     </div>
-
                     <div className="chat-input-container">
                         <input
                             type="text"
                             className="chat-input"
                             value={message}
                             onChange={(e) => setMessage(e.target.value)}
-                            onCompositionStart={() => setIsComposing(true)}
-                            onCompositionEnd={(e) => {
-                                setMessage(e.currentTarget.value);
-                                setIsComposing(false);
-                            }}
-                            onKeyDown={(e) => {
-                                const composing = isComposing
-                                    || e.nativeEvent.isComposing;
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    if (composing) {
-                                        return;
-                                    }
-                                    e.preventDefault();
-                                    handleSendMessage();
-                                }
-                            }}
-                            placeholder={isConnected ? "메시지를 입력하세요..."
-                                : "연결 중..."}
-                            disabled={!isConnected}
+                            onKeyPress={handleKeyPress}
+                            placeholder="메시지를 입력하세요..."
                             maxLength={100}
                         />
-                        <button
-                            className="chat-send"
-                            onClick={handleSendMessage}
-                            disabled={!isConnected || !message.trim()}
-                        >
-                            전송
-                        </button>
+                        <button className="chat-send" onClick={handleSend}>전송</button>
                     </div>
                 </div>
 
@@ -1850,19 +1819,16 @@ export default function Draft() {
                                 name="elementTypeId"
                                 className="search-select"
                                 value={searchParams.elementTypeId}
-                                onChange={(e) => handleSearchInputChange(
-                                    'elementTypeId', e.target.value)}
+                                onChange={(e) => handleSearchInputChange('elementTypeId', e.target.value)}
                             >
                                 <option value="">선택</option>
                                 {elementTypes.map(elementType => (
-                                    <option key={elementType.id}
-                                            value={elementType.id}
-                                            data-squad-min-play={elementType.squadMinPlay}
-                                            data-squad-max-play={elementType.squadMaxPlay}
+                                    <option key={elementType.id} value={elementType.id}
+                                        data-squad-min-play={elementType.squadMinPlay} 
+                                        data-squad-max-play={elementType.squadMaxPlay}
                                     >
-                                        {elementType.krName
-                                        && elementType.krName.trim() !== ''
-                                            ? elementType.krName
+                                        {elementType.krName && elementType.krName.trim() !== '' 
+                                            ? elementType.krName 
                                             : elementType.pluralName}
                                     </option>
                                 ))}
@@ -1873,14 +1839,13 @@ export default function Draft() {
                                 className="search-input"
                                 placeholder="선수 이름 또는 팀으로 검색..."
                                 value={searchParams.keyword}
-                                onChange={(e) => handleSearchInputChange(
-                                    'keyword', e.target.value)}
+                                onChange={(e) => handleSearchInputChange('keyword', e.target.value)}
                                 onKeyPress={handleSearchKeyPress}
                             />
                             <button
                                 type="button"
                                 className="search-btn"
-                                onClick={handlePlayerSearch}
+                                onClick={handleSearch}
                             >
                                 검색
                             </button>
@@ -1888,285 +1853,199 @@ export default function Draft() {
                     </div>
                     <div className="player-list">
                         {/* 로딩 중일 때 */}
-                        {playersLoading && (
-                            <div className="loading-message">선수 데이터를 불러오는
-                                중...</div>
+                        {loading && (
+                            <div className="loading-message">선수 데이터를 불러오는 중...</div>
                         )}
-
+                        
                         {/* 에러 발생시 */}
                         {error && (
                             <div className="error-message">
                                 선수 데이터를 불러오는데 실패했습니다: {error}
                             </div>
                         )}
-
+                        
                         {/* 선수 목록 */}
-                        {!playersLoading && !error && players.map(
-                            (player, idx) => (
-                                <div key={player.id || idx}
-                                     className="player-item">
-                                    <div
-                                        className="player-position">{player.position}</div>
-                                    <div className="player-photo">
-                                        {player.pic ? (
-                                            <img
-                                                src={player.pic}
-                                                alt={player.name}
-                                                onError={(e) => {
-                                                    e.target.style.display = 'none';
-                                                }}
-                                            />
-                                        ) : (
-                                            <div className="no-photo">NO
-                                                IMG</div>
-                                        )}
-                                    </div>
-                                    <div className="player-info">
-                                        <div
-                                            className="player-name">{player.name}</div>
-                                        <div
-                                            className="player-team">{player.team}</div>
-                                    </div>
-                                    <button
-                                        className="select-btn"
-                                        disabled={
-                                            myPlayerCount >= 11 ||
-                                            !isPlayerSelectable(
-                                                player.status) ||
-                                            draftCompleted ||
-                                            isSelectingPlayer ||
-                                            selectedPlayerIds.includes(
-                                                player.id)
-                                        }
-                                        onClick={() => handlePlayerSelect(
-                                            player)}
-                                        title={
-                                            selectedPlayerIds.includes(
-                                                player.id) ? '이미 선택된 선수입니다'
-                                                :
-                                                !isPlayerSelectable(
-                                                    player.status)
-                                                    ? getStatusReason(
-                                                        player.status) : ''
-                                        }
-                                    >
-                                        {selectedPlayerIds.includes(
-                                            player.id) ? '선택됨' :
-                                            isSelectingPlayer ? '선택 중...'
-                                                : '선택'}
-                                    </button>
-
-                                    {/* hidden 데이터들 (화면에는 보이지 않음) */}
-                                    <div style={{display: 'none'}}>
-                                        <span data-id={player.id}></span>
-                                        <span
-                                            data-web-name={player.webName}></span>
-                                        <span
-                                            data-kr-name={player.krName}></span>
-                                        <span
-                                            data-status={player.status}></span>
-                                        <span
-                                            data-team-name={player.teamName}></span>
-                                        <span
-                                            data-team-kr-name={player.teamKrName}></span>
-                                        <span
-                                            data-element-type-id={player.elementTypeId}></span>
-                                        <span
-                                            data-element-type-plural-name={player.elementTypePluralName}></span>
-                                        <span
-                                            data-element-type-kr-name={player.elementTypeKrName}></span>
-                                    </div>
+                        {!loading && !error && players.map((player, idx) => (
+                            <div key={player.id || idx} className="player-item">
+                                <div className="player-position">{player.position}</div>
+                                <div className="player-photo">
+                                    {player.pic ? (
+                                        <img 
+                                            src={player.pic} 
+                                            alt={player.name} 
+                                            onError={(e) => {
+                                                e.target.style.display = 'none';
+                                            }}
+                                        />
+                                    ) : (
+                                        <div className="no-photo">NO IMG</div>
+                                    )}
                                 </div>
-                            ))}
+                                <div className="player-info">
+                                    <div className="player-name">{player.name}</div>
+                                    <div className="player-team">{player.team}</div>
+                                </div>
+                                <button
+                                    className="select-btn"
+                                    disabled={
+                                        player.status !== 'a' || // data-status가 'a'가 아닌 경우만 disabled
+                                        draftCompleted ||
+                                        isSelectingPlayer
+                                    }
+                                    onClick={() => handlePlayerSelect(player)}
+                                    title={
+                                        !isPlayerSelectable(player.status) ? getStatusReason(player.status) : ''
+                                    }
+                                >
+                                    {selectedPlayerIds.includes(player.id) ? '선택됨' :
+                                     isSelectingPlayer ? '선택 중...' : '선택'}
+                                </button>
+                                
+                                {/* hidden 데이터들 (화면에는 보이지 않음) */}
+                                <div style={{ display: 'none' }}>
+                                    <span data-id={player.id}></span>
+                                    <span data-web-name={player.webName}></span>
+                                    <span data-kr-name={player.krName}></span>
+                                    <span data-status={player.status}></span>
+                                    <span data-team-name={player.teamName}></span>
+                                    <span data-team-kr-name={player.teamKrName}></span>
+                                    <span data-element-type-id={player.elementTypeId}></span>
+                                    <span data-element-type-plural-name={player.elementTypePluralName}></span>
+                                    <span data-element-type-kr-name={player.elementTypeKrName}></span>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
 
                 {/* 참가자 + 내 선수 정보 */}
                 <div className="section info-section">
                     <div>
-                        <h3 className="section-title">참가자
-                            ({participants.length}명)</h3>
+                        <h3 className="section-title">참가자 ({participants.length}명)</h3>
                         <div className="users-grid">
                             {participantLoading && (
-                                <div className="loading-message">참가자 정보를
-                                    불러오는 중...</div>
+                                <div className="loading-message">참가자 정보를 불러오는 중...</div>
                             )}
-
+                            
                             {participantError && (
                                 <div className="error-message">
                                     참가자 정보를 불러오는데 실패했습니다: {participantError}
                                 </div>
                             )}
+                            
+                            {!participantLoading && !participantError && participants.map((participant, idx) => {
+                                const participantIsBot = isBot(participant);
+                                const displayName = participantIsBot
+                                    ? `Bot${idx + 1}`
+                                    : (participant.userName && participant.userName.trim() !== ""
+                                        ? participant.userName
+                                        : `User${idx + 1}`);
 
-                            {!participantLoading && !participantError
-                                && participants.map((participant, idx) => {
-                                    const participantIsBot = isBot(
-                                        participant);
-                                    const displayName = participantIsBot
-                                        ? `Bot${idx + 1}`
-                                        : (participant.userName
-                                        && participant.userName.trim()
-                                        !== ""
-                                            ? participant.userName
-                                            : `User${idx + 1}`);
+                                const pickCount = participantPickCounts[participant.participantId] || 0;
+                                
+                                // 현재 턴 참가자 찾기 (currentTurnIndex의 participantUserNumber와 비교)
+                                const currentTurnParticipant = participants[currentTurnIndex];
+                                const isCurrentTurn = draftStarted && !draftCompleted && 
+                                    currentTurnParticipant && currentTurnParticipant.participantUserNumber === participant.participantUserNumber;
 
-                                    const pickCount = participantPickCounts[participant.participantId]
-                                        || 0;
-
-                                    return (
-                                        <div
-                                            key={participant.participantId}
-                                            className={`user-card ${draftStarted
-                                            && !draftCompleted && idx
-                                            === currentTurnIndex ? 'active'
-                                                : ''} ${participantIsBot
-                                                ? 'bot-card'
-                                                : ''} ${selectedParticipantId
-                                            === participant.participantId
-                                                ? 'selected' : ''}`}
-                                            onClick={() => handleParticipantCardClick(
-                                                participant.participantId)}
-                                            style={{cursor: 'pointer'}}
-                                        >
-                                            <div className="user-name">
-                                                {displayName}
-                                                {participantIsBot && <span
-                                                    className="bot-badge">🤖</span>}
-                                            </div>
-                                            <div className="user-picks">
-                                                {pickCount}/11 선택
-                                                {draftStarted
-                                                    && !draftCompleted
-                                                    && idx
-                                                    === currentTurnIndex
-                                                    && ' (현재 턴)'}
-                                                {participantIsBot
-                                                    && draftStarted
-                                                    && !draftCompleted
-                                                    && idx
-                                                    === currentTurnIndex
-                                                    && ' (선택 중...)'}
-                                            </div>
-
-                                            {/* hidden 데이터들 */}
-                                            <div style={{display: 'none'}}>
-                                                    <span
-                                                        data-participant-id={participant.participantId}></span>
-                                                <span
-                                                    data-participant-user-number={participant.participantUserNumber}></span>
-                                                <span
-                                                    data-participant-dummy={participant.participantDummy}></span>
-                                                <span
-                                                    data-user-email={participant.userEmail}></span>
-                                                <span
-                                                    data-user-name={displayName}></span>
-                                                <span
-                                                    data-user-flag={participant.userFlag}></span>
-                                                <span
-                                                    data-is-bot={participantIsBot}></span>
-                                                <span
-                                                    data-is-user={participant.userFlag
-                                                        === true}></span>
-                                            </div>
+                                return (
+                                    <div 
+                                        key={participant.participantId} 
+                                        className={`user-card ${isCurrentTurn ? 'active' : ''} ${participantIsBot ? 'bot-card' : ''} ${selectedParticipantId === participant.participantId ? 'selected' : ''}`}
+                                        onClick={() => handleParticipantCardClick(participant.participantId)}
+                                        style={{ cursor: 'pointer' }}
+                                    >
+                                        <div className="user-name">
+                                            {displayName}
+                                            {participantIsBot && <span className="bot-badge">🤖</span>}
                                         </div>
-                                    );
-                                })}
+                                        <div className="user-picks">
+                                            {pickCount}/11 선택
+                                            {isCurrentTurn && ' (현재 턴)'}
+                                            {participantIsBot && isCurrentTurn && ' (선택 중...)'}
+                                        </div>
+                                        
+                                        {/* hidden 데이터들 */}
+                                        <div style={{ display: 'none' }}>
+                                            <span data-participant-id={participant.participantId}></span>
+                                            <span data-participant-user-number={participant.participantUserNumber}></span>
+                                            <span data-participant-dummy={participant.participantDummy}></span>
+                                            <span data-user-email={participant.userEmail}></span>
+                                            <span data-user-name={displayName}></span>
+                                            <span data-user-flag={participant.userFlag}></span>
+                                            <span data-is-bot={participantIsBot}></span>
+                                            <span data-is-user={participant.userFlag === true}></span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
 
-                    <div style={{flex: 1}}>
+                    <div style={{ flex: 1 }}>
                         <h3 className="section-title">
-                            {selectedParticipantId ?
-                                `선택된 참가자의 선수 (${selectedParticipantDraftedPlayers.length}/11)`
-                                :
+                            {selectedParticipantId ? 
+                                `선택된 참가자의 선수 (${selectedParticipantDraftedPlayers.length}/11)` : 
                                 `내 선수 (${myPlayerCount}/11)`
                             }
                         </h3>
                         <div className="my-players">
                             {draftedPlayersLoading && (
-                                <div className="loading-message">드래프트된 선수
-                                    정보를 불러오는 중...</div>
+                                <div className="loading-message">드래프트된 선수 정보를 불러오는 중...</div>
                             )}
-
+                            
                             {draftedPlayersError && (
                                 <div className="error-message">
-                                    드래프트된 선수 정보를 불러오는데
-                                    실패했습니다: {draftedPlayersError}
+                                    드래프트된 선수 정보를 불러오는데 실패했습니다: {draftedPlayersError}
                                 </div>
                             )}
-
-                            {!draftedPlayersLoading && !draftedPlayersError
-                                && selectedParticipantDraftedPlayers.length
-                                === 0 && (
-                                    <div className="no-players-message">
-                                        {selectedParticipantId
-                                            ? '아직 선택된 선수가 없습니다.'
-                                            : '참가자를 클릭하여 선수를 확인하세요.'}
+                            
+                            {!draftedPlayersLoading && !draftedPlayersError && selectedParticipantDraftedPlayers.length === 0 && (
+                                <div className="no-players-message">
+                                    {selectedParticipantId ? '아직 선택된 선수가 없습니다.' : '참가자를 클릭하여 선수를 확인하세요.'}
+                                </div>
+                            )}
+                            
+                            {!draftedPlayersLoading && !draftedPlayersError && selectedParticipantDraftedPlayers.map((draftedPlayer, idx) => (
+                                <div key={idx} className="my-player-item">
+                                    <div className="my-player-position">
+                                        {getPositionCodeFromPluralName(draftedPlayer.elementTypePluralName)}
                                     </div>
-                                )}
-
-                            {!draftedPlayersLoading && !draftedPlayersError
-                                && selectedParticipantDraftedPlayers.map(
-                                    (draftedPlayer, idx) => (
-                                        <div key={idx}
-                                             className="my-player-item">
-                                            <div
-                                                className="my-player-position">
-                                                {getPositionCodeFromPluralName(
-                                                    draftedPlayer.elementTypePluralName)}
-                                            </div>
-                                            <div
-                                                className="my-player-photo">
-                                                {draftedPlayer.playerPic ? (
-                                                    <img
-                                                        src={draftedPlayer.playerPic}
-                                                        alt={draftedPlayer.playerKrName
-                                                            || draftedPlayer.playerWebName}
-                                                        onError={(e) => {
-                                                            e.target.style.display = 'none';
-                                                        }}
-                                                    />
-                                                ) : (
-                                                    <div
-                                                        className="no-photo-small">NO
-                                                        IMG</div>
-                                                )}
-                                            </div>
-                                            <div className="my-player-name">
-                                                {draftedPlayer.playerKrName
-                                                && draftedPlayer.playerKrName.trim()
-                                                !== ''
-                                                    ? draftedPlayer.playerKrName
-                                                    : draftedPlayer.playerWebName}
-                                            </div>
-
-                                            {/* hidden 데이터들 (화면에는 보이지 않음) */}
-                                            <div style={{display: 'none'}}>
-                                                    <span
-                                                        data-participant-id={draftedPlayer.participantId}></span>
-                                                <span
-                                                    data-player-id={draftedPlayer.playerId}></span>
-                                                <span
-                                                    data-player-web-name={draftedPlayer.playerWebName}></span>
-                                                <span
-                                                    data-player-kr-name={draftedPlayer.playerKrName}></span>
-                                                <span
-                                                    data-player-pic={draftedPlayer.playerPic}></span>
-                                                <span
-                                                    data-team-id={draftedPlayer.teamId}></span>
-                                                <span
-                                                    data-team-name={draftedPlayer.teamName}></span>
-                                                <span
-                                                    data-team-kr-name={draftedPlayer.teamKrName}></span>
-                                                <span
-                                                    data-element-type-id={draftedPlayer.elementTypeId}></span>
-                                                <span
-                                                    data-element-type-plural-name={draftedPlayer.elementTypePluralName}></span>
-                                                <span
-                                                    data-element-type-kr-name={draftedPlayer.elementTypeKrName}></span>
-                                            </div>
-                                        </div>
-                                    ))}
+                                    <div className="my-player-photo">
+                                        {draftedPlayer.playerPic ? (
+                                            <img 
+                                                src={draftedPlayer.playerPic} 
+                                                alt={draftedPlayer.playerKrName || draftedPlayer.playerWebName}
+                                                onError={(e) => {
+                                                    e.target.style.display = 'none';
+                                                }}
+                                            />
+                                        ) : (
+                                            <div className="no-photo-small">NO IMG</div>
+                                        )}
+                                    </div>
+                                    <div className="my-player-name">
+                                        {draftedPlayer.playerKrName && draftedPlayer.playerKrName.trim() !== '' 
+                                            ? draftedPlayer.playerKrName 
+                                            : draftedPlayer.playerWebName}
+                                    </div>
+                                    
+                                    {/* hidden 데이터들 (화면에는 보이지 않음) */}
+                                    <div style={{ display: 'none' }}>
+                                        <span data-participant-id={draftedPlayer.participantId}></span>
+                                        <span data-player-id={draftedPlayer.playerId}></span>
+                                        <span data-player-web-name={draftedPlayer.playerWebName}></span>
+                                        <span data-player-kr-name={draftedPlayer.playerKrName}></span>
+                                        <span data-player-pic={draftedPlayer.playerPic}></span>
+                                        <span data-team-id={draftedPlayer.teamId}></span>
+                                        <span data-team-name={draftedPlayer.teamName}></span>
+                                        <span data-team-kr-name={draftedPlayer.teamKrName}></span>
+                                        <span data-element-type-id={draftedPlayer.elementTypeId}></span>
+                                        <span data-element-type-plural-name={draftedPlayer.elementTypePluralName}></span>
+                                        <span data-element-type-kr-name={draftedPlayer.elementTypeKrName}></span>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
