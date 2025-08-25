@@ -531,8 +531,8 @@ export default function Chatroom() {
           console.error('WebSocket 오류:', error);
         },
         reconnectDelay: 5000,
-        heartbeatIncoming: 4000,
-        heartbeatOutgoing: 4000
+        heartbeatIncoming: 10000,
+        heartbeatOutgoing: 10000
       });
 
       stompClient.activate();
@@ -567,14 +567,10 @@ export default function Chatroom() {
     };
 
     try {
-      stompClientRef.current.send(
-          '/app/chat/${actualRoomId}/send'
-          , {},
-          JSON.stringify(messageData)
-      );
-
-
-      console.log('메세지 전송 완료 ',message.toString())
+      stompClientRef.current.publish({
+        destination: `/app/chat/${actualRoomId}/send`,
+        body: JSON.stringify(messageData)
+      });
       setMessage('');
     } catch (error) {
       console.error('메시지 전송 실패:', error);
