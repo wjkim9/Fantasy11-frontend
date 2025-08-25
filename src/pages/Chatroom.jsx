@@ -546,7 +546,10 @@ export default function Chatroom() {
 
   // 메시지 전송
   const handleSendMessage = () => {
+    console.log('메세지 전송 시작 ',message.toString())
+
     if (isComposing) {
+      console.log('메세지 전송 시작 isComposing', isComposing)
       return;
     }
     if (!message.trim()) {
@@ -568,6 +571,8 @@ export default function Chatroom() {
         destination: `/app/chat/${actualRoomId}/send`,
         body: JSON.stringify(messageData)
       });
+
+      console.log('메세지 전송 완료 ',message.toString())
       setMessage('');
     } catch (error) {
       console.error('메시지 전송 실패:', error);
