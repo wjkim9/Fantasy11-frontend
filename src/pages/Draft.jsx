@@ -233,8 +233,13 @@ export default function Draft() {
             if (currentUser && item.userId === currentUser.id) {
                 userName = currentUser.email;
             } else {
-                // 참가자 리스트에서 사용자 정보 찾기 (추후 수정 가능)
-                userName = item.userEmail || '알 수 없는 사용자';
+                // 참가자 리스트에서 사용자 정보 찾기
+                const participant = participants.find(p => p.userId === item.userId);
+                if (participant && participant.userEmail) {
+                    userName = participant.userEmail;
+                } else {
+                    userName = item.userEmail || '유명한 게임 참여자';
+                }
             }
         }
 
@@ -246,7 +251,7 @@ export default function Draft() {
             type: item.type,
             userId: item.userId
         };
-    }, [currentUser]);
+    }, [currentUser, participants]);
 
     // draftId 확인을 위한 로그
     useEffect(() => {
@@ -1518,7 +1523,7 @@ export default function Draft() {
                                         userName = participant.userEmail;
                                     } else {
                                         userName = newMessage.userEmail
-                                            || '알 수 없는 사용자';
+                                            || '유명한 게임 참여자';
                                     }
                                 }
                             }
@@ -1801,13 +1806,84 @@ export default function Draft() {
                 {/* 채팅 */}
                 <div className="section chat-section">
                     <h3 className="section-title">채팅</h3>
+                    
+                    {/* 채팅 검색 영역 */}
+                    <div className="chat-search-container">
+                        <input
+                            type="text"
+                            className="chat-search-input"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleChatSearch();
+                                }
+                            }}
+                            placeholder="채팅 메시지 검색..."
+                        />
+                        <button
+                            className="chat-search-btn"
+                            onClick={handleChatSearch}
+                            disabled={isSearching || !searchQuery.trim()}
+                        >
+                            {isSearching ? '검색중...' : '🔍'}
+                        </button>
+                        {showSearchResults && (
+                            <button
+                                className="chat-search-clear"
+                                onClick={clearSearch}
+                                title="검색 결과 지우기"
+                            >
+                                ✕
+                            </button>
+                        )}
+                    </div>
+                    
                     <div className="chat-messages" ref={chatBoxRef}>
-                        {chatList.map((chat, i) => (
-                            <div key={i} className="chat-message">
-                                <div className="chat-user">{chat.user}</div>
-                                <div className="chat-text">{chat.text}</div>
-                            </div>
-                        ))}
+                        {showSearchResults ? (
+                            /* 검색 결과 표시 */
+                            <>
+                                <div className="search-results-header">
+                                    검색 결과: "{searchQuery}" ({searchResults.length}건)
+                                </div>
+                                {searchResults.length > 0 ? (
+                                    searchResults.map((msg) => (
+                                        <div key={msg.id}
+                                             className={`chat-message search-result ${msg.type
+                                             === 'ALERT' ? 'alert-message' : ''}`}>
+                                          <div className="chat-user">{msg.user}</div>
+                                          <div className="chat-text">{msg.text}</div>
+                                          <div className="chat-time">{msg.time}</div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="no-search-results">
+                                      검색 결과가 없습니다.
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            /* 일반 채팅 메시지 표시 */
+                            <>
+                                {hasMore && (
+                                    <div ref={loadMoreRef} className="load-more-trigger">
+                                      {loading && <div className="loading-message">이전 메시지를
+                                        불러오는 중...</div>}
+                                    </div>
+                                )}
+                                {!hasMore && chatList.length > 0 && (
+                                    <div className="chat-end-message">채팅의 시작입니다.</div>
+                                )}
+                                {chatList.map((chat, i) => (
+                                    <div key={i} className="chat-message">
+                                        <div className="chat-user">{chat.user}</div>
+                                        <div className="chat-text">{chat.text}</div>
+                                        <div className="chat-time">{chat.time}</div>
+                                    </div>
+                                ))}
+                            </>
+                        )}
                     </div>
                     <div className="chat-input-container">
                         <input
