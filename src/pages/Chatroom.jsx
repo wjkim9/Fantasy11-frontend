@@ -569,7 +569,7 @@ export default function Chatroom() {
 
     try {
       stompClientRef.current.publish({
-        destination: `/app/chat/send`,
+        destination: `/app/chat/${actualRoomId}/send`,
         body: JSON.stringify(messageData)
       });
       setMessage('');

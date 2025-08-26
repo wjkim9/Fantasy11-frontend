@@ -1527,6 +1527,12 @@ export default function Draft() {
                             };
 
                             setChatList(prev => {
+                                // 중복 메시지 방지 - ID로 체크
+                                const isDuplicate = prev.some(msg => msg.id === formattedMessage.id);
+                                if (isDuplicate) {
+                                    return prev;
+                                }
+
                                 const newList = [...prev, formattedMessage];
 
                                 // 새 메시지 추가 후 즉시 스크롤을 맨 아래로
@@ -1687,7 +1693,7 @@ export default function Draft() {
         if (chatRoomId && currentUser && !isConnected) {
             connectChatWebSocket();
         }
-    }, [chatRoomId, currentUser, connectChatWebSocket]);
+    }, [chatRoomId, currentUser, isConnected]);
 
     useEffect(() => {
         if (chatBoxRef.current) {
@@ -1792,7 +1798,7 @@ export default function Draft() {
                         {chatList.map((chat, i) => (
                             <div key={i} className="chat-message">
                                 <div className="chat-user">{chat.user}</div>
-                                <div className="chat-text">{chat.message}</div>
+                                <div className="chat-text">{chat.text}</div>
                             </div>
                         ))}
                     </div>
