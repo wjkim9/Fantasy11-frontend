@@ -428,6 +428,7 @@ export default function Chatroom() {
           const subscription = stompClient.subscribe(
               `/topic/chat/${actualRoomId}`, (message) => {
                 const newMessage = JSON.parse(message.body);
+                console.log("서버에서 받은 메세지 = ",newMessage.toString())
 
                 // 사용자 이름 결정 (formatMessage와 동일한 로직 사용)
                 let userName = '시스템';
@@ -563,12 +564,12 @@ export default function Chatroom() {
 
     const messageData = {
       roomId: actualRoomId,
-      content: message.trim()
+      content: message.trim(),
     };
 
     try {
       stompClientRef.current.publish({
-        destination: `/app/chat/${actualRoomId}/send`,
+        destination: `/app/chat/send`,
         body: JSON.stringify(messageData)
       });
       setMessage('');
