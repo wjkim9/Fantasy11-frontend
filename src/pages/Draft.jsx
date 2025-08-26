@@ -1511,8 +1511,15 @@ export default function Draft() {
                                     === currentUser.id) {
                                     userName = currentUser.email;
                                 } else {
-                                    userName = newMessage.userEmail
-                                        || '알 수 없는 사용자';
+                                    // participants에서 사용자 정보 찾기
+                                    const participant = participants.find(
+                                        p => p.userId === newMessage.userId);
+                                    if (participant && participant.userEmail) {
+                                        userName = participant.userEmail;
+                                    } else {
+                                        userName = newMessage.userEmail
+                                            || '알 수 없는 사용자';
+                                    }
                                 }
                             }
 
