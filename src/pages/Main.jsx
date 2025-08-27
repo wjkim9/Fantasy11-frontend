@@ -447,6 +447,13 @@ export default function Main() {
         <>
             <header className="header">
                 <div className="logo">Fantasy11</div>
+                <button className="login-btn"
+                    onClick={() => {
+                        window.location.href = '/draft/ed9e183a-f555-402e-b9eb-0df847e0b1f9';
+                    }}
+                    >
+                    봇드래프트
+                </button>
                 <button className="login-btn" onClick={handleLoginClick}>
                     {isLoggedIn ? "로그아웃" : "로그인"}
                 </button>
